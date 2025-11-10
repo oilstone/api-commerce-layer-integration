@@ -1,0 +1,4 @@
+*.code-workspace
+*.lock
+/vendor/
+composer.phar

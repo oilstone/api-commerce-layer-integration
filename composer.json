@@ -1,0 +1,25 @@
+{
+    "name": "oilstone/api-commerce-layer-integration",
+    "description": "A Commerce Layer integration package for garethhudson07/api",
+    "type": "library",
+    "require": {
+        "php": "^8.1",
+        "garethhudson07/api": "^9.5"
+    },
+    "require-dev": {
+        "laravel/framework": "^11.0",
+        "oilstone/api-resource-loader": "^5.3"
+    },
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Oilstone\\ApiCommerceLayerIntegration\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Brendan Bullen",
+            "email": "66941+bullenb@users.noreply.github.com"
+        }
+    ]
+}
