@@ -1,6 +1,6 @@
 # API Commerce Layer Integration
 
-This package provides the foundations for integrating the [`garethhudson07/api`](https://github.com/garethhudson07/api) toolkit with the [Commerce Layer](https://commercelayer.io) platform. The implementation mirrors the structure of the [`oilstone/api-salesforce-integration`](https://github.com/oilstone/api-salesforce-integration) package while adapting the HTTP client, query builder, and repository behaviours to Commerce Layer's JSON:API compliant endpoints.
+This package provides the foundations for integrating the [`garethhudson07/api`](https://github.com/garethhudson07/api) toolkit with the [Commerce Layer](https://commercelayer.io) platform. It includes an HTTP client, query builder, and repository abstraction tailored to Commerce Layer's JSON:API compliant endpoints.
 
 ## Highlights
 
@@ -10,7 +10,7 @@ This package provides the foundations for integrating the [`garethhudson07/api`]
 - Lightweight record and collection helpers for working with JSON:API responses.
 - Optional PSR-16 caching support via the `Cache\\QueryCacheHandler` utility.
 
-The package is intentionally lightweight so it can act as the starting point for bespoke integrations. Additional bridges (for example to the API pipeline or resource loader packages) can be layered on using the same methodology demonstrated in the Salesforce integration.
+The package is intentionally lightweight so it can act as the starting point for bespoke integrations. Additional bridges (for example to the API pipeline or resource loader packages) can be layered on using the same methodology throughout this codebase.
 
 ## Installation
 
