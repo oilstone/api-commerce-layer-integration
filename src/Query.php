@@ -19,6 +19,8 @@ class Query
 
     protected array $relationshipFields = [];
 
+    protected array $relationshipFieldsFromIncludes = [];
+
     protected array $includes = [];
 
     protected array $conditions = [];
@@ -40,6 +42,7 @@ class Query
         $this->identifier = $identifier;
         $this->fields = [$identifier];
         $this->relationshipFields = [];
+        $this->relationshipFieldsFromIncludes = [];
     }
 
     public static function make(string $resource, CommerceLayer $client, string $identifier = 'id'): static
@@ -101,6 +104,7 @@ class Query
 
                 foreach ($fields as $field) {
                     $this->relationshipFields[$relationship][] = $field;
+                    $this->relationshipFieldsFromIncludes[$relationship][] = $field;
                 }
             }
         }
@@ -110,8 +114,16 @@ class Query
 
     public function select(array|string $fields): static
     {
+        $preservedRelationshipFields = $this->relationshipFieldsFromIncludes;
+
         $this->fields = [];
         $this->relationshipFields = [];
+
+        foreach ($preservedRelationshipFields as $relationship => $relationshipFields) {
+            foreach ($relationshipFields as $field) {
+                $this->relationshipFields[$relationship][] = $field;
+            }
+        }
 
         $fields = is_array($fields) ? $fields : array_map('trim', explode(',', (string) $fields));
 
