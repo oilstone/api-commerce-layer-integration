@@ -17,6 +17,8 @@ class Query
 
     protected array $fields = [];
 
+    protected array $relationshipFields = [];
+
     protected array $includes = [];
 
     protected array $conditions = [];
@@ -37,6 +39,7 @@ class Query
         $this->client = $client;
         $this->identifier = $identifier;
         $this->fields = [$identifier];
+        $this->relationshipFields = [];
     }
 
     public static function make(string $resource, CommerceLayer $client, string $identifier = 'id'): static
@@ -91,7 +94,15 @@ class Query
         $relationship = trim($relationship);
 
         if ($relationship !== '') {
-            $this->includes[] = $relationship;
+            [$relationship, $fields] = $this->parseInclude($relationship);
+
+            if ($relationship !== '') {
+                $this->includes[] = $relationship;
+
+                foreach ($fields as $field) {
+                    $this->relationshipFields[$relationship][] = $field;
+                }
+            }
         }
 
         return $this;
@@ -99,7 +110,24 @@ class Query
 
     public function select(array|string $fields): static
     {
-        $this->fields = is_array($fields) ? $fields : array_map('trim', explode(',', (string) $fields));
+        $this->fields = [];
+        $this->relationshipFields = [];
+
+        $fields = is_array($fields) ? $fields : array_map('trim', explode(',', (string) $fields));
+
+        if ($fields === []) {
+            return $this;
+        }
+
+        $added = false;
+
+        foreach ($fields as $field) {
+            $added = $this->addFieldFromSelection($field) || $added;
+        }
+
+        if ($added && $this->fields === []) {
+            $this->fields[] = $this->identifier;
+        }
 
         return $this;
     }
@@ -238,8 +266,8 @@ class Query
             $parameters['include'] = implode(',', array_unique($this->includes));
         }
 
-        if ($this->fields) {
-            $parameters['fields['.$this->resource.']'] = implode(',', array_unique($this->fields));
+        foreach ($this->buildFieldParameters() as $resource => $fields) {
+            $parameters['fields['.$resource.']'] = implode(',', $fields);
         }
 
         $options = array_merge($this->cacheOptions, $options);
@@ -303,8 +331,8 @@ class Query
     {
         $parameters = [];
 
-        if ($this->fields) {
-            $parameters['fields['.$this->resource.']'] = implode(',', array_unique($this->fields));
+        foreach ($this->buildFieldParameters() as $resource => $fields) {
+            $parameters['fields['.$resource.']'] = implode(',', $fields);
         }
 
         if ($this->includes) {
@@ -357,6 +385,90 @@ class Query
         }
 
         return $filters;
+    }
+
+    protected function parseInclude(string $include): array
+    {
+        $fields = [];
+
+        if (str_contains($include, ':')) {
+            [$include, $fieldList] = explode(':', $include, 2);
+            $include = trim($include);
+            $fields = array_filter(array_map('trim', explode(',', (string) $fieldList)));
+        }
+
+        return [$include, $fields];
+    }
+
+    protected function addFieldFromSelection(mixed $field): bool
+    {
+        if (is_object($field)) {
+            if (! method_exists($field, '__toString')) {
+                return false;
+            }
+
+            $field = (string) $field;
+        }
+
+        if (! is_scalar($field)) {
+            return false;
+        }
+
+        $field = trim((string) $field);
+
+        if ($field === '') {
+            return false;
+        }
+
+        $field = str_replace('->', '.', $field);
+
+        if (str_contains($field, '.')) {
+            [$relationship, $relatedField] = explode('.', $field, 2);
+            $relationship = trim($relationship);
+            $relatedField = trim($relatedField);
+
+            if ($relationship === '' || $relatedField === '') {
+                return false;
+            }
+
+            $this->relationshipFields[$relationship][] = $relatedField;
+
+            return true;
+        }
+
+        $this->fields[] = $field;
+
+        return true;
+    }
+
+    protected function buildFieldParameters(): array
+    {
+        $fieldParameters = [];
+
+        if ($this->fields) {
+            $fieldParameters[$this->resource] = $this->fields;
+        }
+
+        foreach ($this->relationshipFields as $relationship => $fields) {
+            if (! $fields) {
+                continue;
+            }
+
+            $fieldParameters[$relationship] = $fields;
+        }
+
+        foreach ($fieldParameters as $resource => $fields) {
+            $fields = array_values(array_filter(array_unique(array_map('trim', $fields))));
+
+            if ($fields === []) {
+                unset($fieldParameters[$resource]);
+                continue;
+            }
+
+            $fieldParameters[$resource] = $fields;
+        }
+
+        return $fieldParameters;
     }
 
     protected function resolveOperatorSuffix(string $operator): string
