@@ -35,6 +35,8 @@ class Query
 
     protected array $cacheOptions = [];
 
+    protected array $lastResponse = [];
+
     public function __construct(string $resource, CommerceLayer $client, string $identifier = 'id')
     {
         $this->resource = $resource;
@@ -286,7 +288,9 @@ class Query
 
         $result = $this->client->retrieve($this->resource, $id, $parameters, $options);
 
-        return $result['data'] ?? null;
+        $this->lastResponse = $this->prepareResponse($result);
+
+        return $this->lastResponse['data'] ?? null;
     }
 
     public function get(): array
@@ -301,10 +305,18 @@ class Query
         if ($this->cacheHandler) {
             $cacheKey = $this->resource.'?'.http_build_query($parameters);
 
-            return $this->cacheHandler->rememberQuery($cacheKey, $callback, $options);
+            $response = $this->cacheHandler->rememberQuery($cacheKey, $callback, $options);
+
+            $this->lastResponse = $this->prepareResponse($response);
+
+            return $this->lastResponse['data'] ?? [];
         }
 
-        return $callback();
+        $response = $callback();
+
+        $this->lastResponse = $this->prepareResponse($response);
+
+        return $this->lastResponse['data'] ?? [];
     }
 
     public function getConditions(): array
@@ -337,6 +349,177 @@ class Query
     public function getOffset(): ?int
     {
         return $this->offset;
+    }
+
+    public function getLastResponse(): array
+    {
+        return $this->lastResponse;
+    }
+
+    public function getIncluded(): array
+    {
+        return $this->lastResponse['included'] ?? [];
+    }
+
+    public function getMeta(): array
+    {
+        return $this->lastResponse['meta'] ?? [];
+    }
+
+    public function getLinks(): array
+    {
+        return $this->lastResponse['links'] ?? [];
+    }
+
+    protected function prepareResponse(mixed $response): array
+    {
+        if (! is_array($response)) {
+            return [];
+        }
+
+        if (! isset($response['included']) || ! is_array($response['included']) || $response['included'] === []) {
+            return $response;
+        }
+
+        $response['data'] = $this->mergeIncludedIntoData($response['data'] ?? [], $response['included']);
+
+        return $response;
+    }
+
+    protected function mergeIncludedIntoData(mixed $data, array $included): mixed
+    {
+        if (! is_array($data) || $data === []) {
+            return $data;
+        }
+
+        $index = $this->indexIncludedResources($included);
+        $resolved = [];
+
+        if (array_is_list($data)) {
+            return array_map(function ($resource) use ($index, &$resolved) {
+                return is_array($resource) ? $this->mergeIncludedIntoResource($resource, $index, $resolved) : $resource;
+            }, $data);
+        }
+
+        return $this->mergeIncludedIntoResource($data, $index, $resolved);
+    }
+
+    protected function mergeIncludedIntoResource(array $resource, array $index, array &$resolved): array
+    {
+        if (! isset($resource['relationships']) || ! is_array($resource['relationships'])) {
+            return $resource;
+        }
+
+        foreach ($resource['relationships'] as $name => $relationship) {
+            if (! is_array($relationship)) {
+                continue;
+            }
+
+            $related = $relationship['data'] ?? null;
+
+            if ($related === null) {
+                $resource[$name] = null;
+
+                continue;
+            }
+
+            if (is_array($related) && array_is_list($related)) {
+                $resource[$name] = array_values(array_filter(array_map(function ($item) use ($index, &$resolved) {
+                    return is_array($item) ? $this->resolveIncludedResource($item, $index, $resolved) : null;
+                }, $related), static function ($item) {
+                    return $item !== null;
+                }));
+
+                continue;
+            }
+
+            $resource[$name] = is_array($related)
+                ? $this->resolveIncludedResource($related, $index, $resolved)
+                : null;
+        }
+
+        return $resource;
+    }
+
+    protected function resolveIncludedResource(array $identifier, array $index, array &$resolved): ?array
+    {
+        $type = $identifier['type'] ?? null;
+        $id = $identifier['id'] ?? null;
+
+        if (! $type || ! $id) {
+            return null;
+        }
+
+        if (isset($resolved[$type][$id])) {
+            return $resolved[$type][$id];
+        }
+
+        if (! isset($index[$type][$id])) {
+            return $resolved[$type][$id] = [
+                'id' => $id,
+                'type' => $type,
+            ];
+        }
+
+        $resource = $index[$type][$id];
+
+        $flattened = ($resource['attributes'] ?? []);
+        $flattened['id'] = $resource['id'] ?? $id;
+        $flattened['type'] = $type;
+
+        if (isset($resource['relationships']) && is_array($resource['relationships'])) {
+            foreach ($resource['relationships'] as $name => $relationship) {
+                if (! is_array($relationship)) {
+                    continue;
+                }
+
+                $related = $relationship['data'] ?? null;
+
+                if ($related === null) {
+                    $flattened[$name] = null;
+
+                    continue;
+                }
+
+                if (is_array($related) && array_is_list($related)) {
+                    $flattened[$name] = array_values(array_filter(array_map(function ($item) use ($index, &$resolved) {
+                        return is_array($item) ? $this->resolveIncludedResource($item, $index, $resolved) : null;
+                    }, $related), static function ($item) {
+                        return $item !== null;
+                    }));
+
+                    continue;
+                }
+
+                $flattened[$name] = is_array($related)
+                    ? $this->resolveIncludedResource($related, $index, $resolved)
+                    : null;
+            }
+        }
+
+        return $resolved[$type][$id] = $flattened;
+    }
+
+    protected function indexIncludedResources(array $included): array
+    {
+        $index = [];
+
+        foreach ($included as $resource) {
+            if (! is_array($resource)) {
+                continue;
+            }
+
+            $type = $resource['type'] ?? null;
+            $id = $resource['id'] ?? null;
+
+            if (! $type || ! $id) {
+                continue;
+            }
+
+            $index[$type][$id] = $resource;
+        }
+
+        return $index;
     }
 
     protected function buildParameters(): array
