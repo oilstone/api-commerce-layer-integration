@@ -213,10 +213,6 @@ class Query
                 return $value ? Carbon::parse($value)->toDateTimeString() : $value;
         }
 
-        if ($property->hasMeta('isYesNo') && $value !== null) {
-            return $value ? 'Yes' : 'No';
-        }
-
         if (is_array($value) && in_array(strtoupper((string) $operator), ['IN', 'NOT IN'], true)) {
             return array_map('strval', $value);
         }

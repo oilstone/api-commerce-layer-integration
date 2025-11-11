@@ -523,6 +523,11 @@ class Repository implements RepositoryInterface
         }
 
         foreach ($schema->getProperties() as $property) {
+            if ($property->hasMeta('isMetadata')) {
+                $fields[] = $prefix . 'metadata';
+                continue;
+            }
+
             if ($property->hasMeta('validationOnly') || $property->hasMeta('isRelation')) {
                 continue;
             }
@@ -548,7 +553,8 @@ class Repository implements RepositoryInterface
                 $property->hasMeta('readonly') ||
                 $property->hasMeta('calculated') ||
                 $property->hasMeta('validationOnly') ||
-                $property->hasMeta('isRelation')
+                $property->hasMeta('isRelation') ||
+                $property->hasMeta('isMetadata')
             ) {
                 continue;
             }
@@ -564,10 +570,6 @@ class Repository implements RepositoryInterface
             if ($property->hasMeta('default') || $property->hasMeta('fixed')) {
                 $rawValue = $property->hasMeta('fixed') ? $property->fixed : $property->default;
                 $value = $this->resolvePropertyValue($rawValue, $property);
-
-                if ($property->hasMeta('isYesNo') && $value !== null) {
-                    $value = $value ? 'Yes' : 'No';
-                }
 
                 $path = explode('.', $prefix . $key);
                 $current = &$defaults;
