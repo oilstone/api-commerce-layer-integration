@@ -209,7 +209,19 @@ class Repository
             if ($options === [] && $this->isOptionsArray($conditionsOrOptions)) {
                 $options = $conditionsOrOptions;
             } else {
-                $query->where($conditionsOrOptions);
+                foreach ($conditionsOrOptions as $condition) {
+                    if (is_array($condition)) {
+                        $query->where(...$condition);
+                        continue;
+                    }
+
+                    if (is_callable($condition)) {
+                        $condition($query);
+                        continue;
+                    }
+
+                    $query->where($condition);
+                }
             }
         }
 
