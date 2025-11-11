@@ -410,6 +410,10 @@ class Query
             return $resource;
         }
 
+        $attributes = isset($resource['attributes']) && is_array($resource['attributes'])
+            ? $resource['attributes']
+            : [];
+
         foreach ($resource['relationships'] as $name => $relationship) {
             if (! is_array($relationship)) {
                 continue;
@@ -418,13 +422,13 @@ class Query
             $related = $relationship['data'] ?? null;
 
             if ($related === null) {
-                $resource[$name] = null;
+                $attributes[$name] = null;
 
                 continue;
             }
 
             if (is_array($related) && array_is_list($related)) {
-                $resource[$name] = array_values(array_filter(array_map(function ($item) use ($index, &$resolved) {
+                $attributes[$name] = array_values(array_filter(array_map(function ($item) use ($index, &$resolved) {
                     return is_array($item) ? $this->resolveIncludedResource($item, $index, $resolved) : null;
                 }, $related), static function ($item) {
                     return $item !== null;
@@ -433,9 +437,13 @@ class Query
                 continue;
             }
 
-            $resource[$name] = is_array($related)
+            $attributes[$name] = is_array($related)
                 ? $this->resolveIncludedResource($related, $index, $resolved)
                 : null;
+        }
+
+        if ($attributes !== []) {
+            $resource['attributes'] = array_merge($resource['attributes'] ?? [], $attributes);
         }
 
         return $resource;
