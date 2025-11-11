@@ -126,23 +126,6 @@ class Transformer implements Contract
                 $value = $value === '' ? [] : explode($property->delimited, (string) $value);
             }
 
-            if ($property->hasMeta('isYesNo')) {
-                $value = $value !== null ? strtolower((string) $value) === 'yes' : null;
-            }
-
-            if ($property->hasMeta('isAddressLine')) {
-                $line = (int) $property->isAddressLine;
-                $lines = preg_split("/\r\n|\n|\r/", (string) $value);
-
-                $transformed[$property->getName()] = ($lines[$line - 1] ?? null) ?: null;
-
-                if ($property->hasMeta('afterTransform') && is_callable($property->afterTransform)) {
-                    $transformed[$property->getName()] = ($property->afterTransform)($transformed[$property->getName()], $attributes);
-                }
-
-                continue;
-            }
-
             if ($property->hasMeta('afterTransform') && is_callable($property->afterTransform)) {
                 $value = ($property->afterTransform)($value, $attributes);
             }
@@ -156,8 +139,6 @@ class Transformer implements Contract
     protected function reverseSchema(Schema $schema, array $attributes, bool $force = false): array
     {
         $reversed = [];
-        $addressLines = [];
-        $addressPlaceholders = [];
 
         foreach ($schema->getProperties() as $property) {
             if (
@@ -204,39 +185,6 @@ class Transformer implements Contract
                 continue;
             }
 
-            if ($property->hasMeta('isAddressLine')) {
-                $line = (int) $property->isAddressLine;
-                $lineValue = $attributes[$property->getName()] ?? null;
-
-                if ($property->hasMeta('beforeReverse') && is_callable($property->beforeReverse)) {
-                    $lineValue = ($property->beforeReverse)($lineValue, $attributes);
-                }
-
-                if ($lineValue === null && array_key_exists($key, $attributes)) {
-                    $lines = preg_split("/\r\n|\n|\r/", (string) $attributes[$key]);
-                    $lineValue = $lines[$line - 1] ?? null;
-                }
-
-                if ($property->hasMeta('fixed') && ! ($force && $hasValue)) {
-                    $lineValue = $this->resolvePropertyValue($property->fixed, $property, $attributes);
-                } elseif ($lineValue === null && $property->hasMeta('default')) {
-                    $lineValue = $this->resolvePropertyValue($property->default, $property, $attributes);
-                }
-
-                if ($property->hasMeta('afterReverse') && is_callable($property->afterReverse)) {
-                    $lineValue = ($property->afterReverse)($lineValue, $attributes);
-                }
-
-                $addressLines[$line] = $lineValue;
-
-                if ($line === 1) {
-                    $reversed[$key] = null; // Placeholder to ensure multi-line addresses map correctly.
-                    $addressPlaceholders[] = $key;
-                }
-
-                continue;
-            }
-
             $value = array_key_exists($property->getName(), $attributes)
                 ? $attributes[$property->getName()]
                 : ($attributes[$key] ?? null);
@@ -251,10 +199,6 @@ class Transformer implements Contract
                 $value = $this->resolvePropertyValue($property->default, $property, $attributes);
             }
 
-            if ($property->hasMeta('isYesNo') && $value !== null) {
-                $value = $value ? 'Yes' : 'No';
-            }
-
             if ($property->hasMeta('delimited') && is_array($value)) {
                 $value = implode($property->delimited, $value);
             }
@@ -264,16 +208,6 @@ class Transformer implements Contract
             }
 
             $reversed[$key] = $value;
-        }
-
-        if ($addressLines !== []) {
-            ksort($addressLines);
-
-            $joinedLines = implode("\n", array_filter($addressLines, static fn ($line) => $line !== null));
-
-            foreach ($addressPlaceholders as $placeholderKey) {
-                $reversed[$placeholderKey] = $joinedLines;
-            }
         }
 
         return $reversed;
