@@ -646,29 +646,52 @@ class Query
 
     protected function buildFieldParameters(): array
     {
-        $fieldParameters = [];
+        $fields = $this->fields;
+        $relationshipFields = $this->relationshipFields;
 
-        if ($this->fields) {
-            $fieldParameters[$this->resource] = $this->fields;
-        }
+        foreach ($this->includes as $include) {
+            $segments = array_values(array_filter(array_map('trim', explode('.', $include))));
 
-        foreach ($this->relationshipFields as $relationship => $fields) {
-            if (! $fields) {
+            if ($segments === []) {
                 continue;
             }
 
-            $fieldParameters[$relationship] = $fields;
+            $parent = array_shift($segments);
+            $fields[] = $parent;
+
+            foreach ($segments as $segment) {
+                if ($segment === '') {
+                    continue;
+                }
+
+                $relationshipFields[$parent][] = $segment;
+                $parent = $segment;
+            }
         }
 
-        foreach ($fieldParameters as $resource => $fields) {
-            $fields = array_values(array_filter(array_unique(array_map('trim', $fields))));
+        $fieldParameters = [];
 
-            if ($fields === []) {
+        if ($fields) {
+            $fieldParameters[$this->resource] = $fields;
+        }
+
+        foreach ($relationshipFields as $relationship => $relationshipFieldsForResource) {
+            if (! $relationshipFieldsForResource) {
+                continue;
+            }
+
+            $fieldParameters[$relationship] = $relationshipFieldsForResource;
+        }
+
+        foreach ($fieldParameters as $resource => $resourceFields) {
+            $resourceFields = array_values(array_filter(array_unique(array_map('trim', $resourceFields))));
+
+            if ($resourceFields === []) {
                 unset($fieldParameters[$resource]);
                 continue;
             }
 
-            $fieldParameters[$resource] = $fields;
+            $fieldParameters[$resource] = $resourceFields;
         }
 
         return $fieldParameters;
