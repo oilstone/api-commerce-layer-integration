@@ -144,7 +144,6 @@ class Transformer implements Contract
             if (
                 $property->hasMeta('validationOnly') ||
                 $property->hasMeta('isRelation') ||
-                $property->hasMeta('isMetadata') ||
                 $property->hasMeta('calculated') ||
                 (
                     ! $force &&
