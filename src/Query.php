@@ -147,8 +147,17 @@ class Query
         }
 
         if (is_array($arguments[0])) {
+            if ($this->isConditionArray($arguments[0])) {
+                return $this->addCondition($boolean, ...$arguments[0]);
+            }
+
             foreach ($arguments[0] as $field => $value) {
                 if (is_int($field)) {
+                    if (is_array($value) && $this->isConditionArray($value)) {
+                        $this->addCondition($boolean, ...$value);
+                        continue;
+                    }
+
                     $this->addCondition($boolean, $value);
                     continue;
                 }
@@ -386,6 +395,15 @@ class Query
         }
 
         return (string) $value;
+    }
+
+    protected function isConditionArray(mixed $value): bool
+    {
+        if (! is_array($value) || $value === [] || ! array_is_list($value)) {
+            return false;
+        }
+
+        return count($value) >= 2 && is_string($value[0]);
     }
 
     protected function ensureResourceIsSet(): void
