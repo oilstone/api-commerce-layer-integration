@@ -50,7 +50,33 @@ class Transformer implements Contract
             }
 
             if ($property->getAccepts() instanceof Schema && $property->getType() !== 'collection') {
-                $transformed[$property->getName()] = $this->transformSchema($property->getAccepts(), $attributes);
+                $key = $property->alias ?: $property->getName();
+                $path = explode('.', $key);
+                $currentAttributes = $attributes;
+
+                while ($path !== [] && $currentAttributes !== null) {
+                    if (is_object($currentAttributes) && method_exists($currentAttributes, 'jsonSerialize')) {
+                        $currentAttributes = $currentAttributes->jsonSerialize();
+                    }
+
+                    if (! is_array($currentAttributes)) {
+                        $currentAttributes = [];
+                        break;
+                    }
+
+                    $segment = array_shift($path);
+                    $currentAttributes = $currentAttributes[$segment] ?? [];
+                }
+
+                if (is_object($currentAttributes) && method_exists($currentAttributes, 'jsonSerialize')) {
+                    $currentAttributes = $currentAttributes->jsonSerialize();
+                }
+
+                if (! is_array($currentAttributes)) {
+                    $currentAttributes = [];
+                }
+
+                $transformed[$property->getName()] = $this->transformSchema($property->getAccepts(), $currentAttributes);
 
                 continue;
             }
@@ -131,6 +157,7 @@ class Transformer implements Contract
     {
         $reversed = [];
         $addressLines = [];
+        $addressPlaceholders = [];
 
         foreach ($schema->getProperties() as $property) {
             if (
@@ -204,6 +231,7 @@ class Transformer implements Contract
 
                 if ($line === 1) {
                     $reversed[$key] = null; // Placeholder to ensure multi-line addresses map correctly.
+                    $addressPlaceholders[] = $key;
                 }
 
                 continue;
@@ -241,13 +269,11 @@ class Transformer implements Contract
         if ($addressLines !== []) {
             ksort($addressLines);
 
-            $reversed = array_map(function ($value) use ($addressLines) {
-                if ($value !== null) {
-                    return $value;
-                }
+            $joinedLines = implode("\n", array_filter($addressLines, static fn ($line) => $line !== null));
 
-                return implode("\n", array_filter($addressLines, static fn ($line) => $line !== null));
-            }, $reversed);
+            foreach ($addressPlaceholders as $placeholderKey) {
+                $reversed[$placeholderKey] = $joinedLines;
+            }
         }
 
         return $reversed;
