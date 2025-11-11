@@ -137,7 +137,7 @@ class Query
     protected function addCondition(string $boolean, ...$arguments): static
     {
         if (! $arguments) {
-            throw new InvalidQueryArgumentsException('A condition requires at least one argument.');
+            throw new InvalidQueryArgumentsException();
         }
 
         if (is_callable($arguments[0])) {
@@ -160,7 +160,7 @@ class Query
         }
 
         if (count($arguments) === 1) {
-            throw new InvalidQueryArgumentsException('A condition defined by string arguments requires a value.');
+            throw new InvalidQueryArgumentsException();
         }
 
         if (count($arguments) === 2) {
