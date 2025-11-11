@@ -304,7 +304,7 @@ class Query
 
         if ($filters = $this->compileFilters()) {
             foreach ($filters as $key => $value) {
-                $parameters['filter['.$key.']'] = $value;
+                $parameters['filter[q]['.$key.']'] = $value;
             }
         }
 
