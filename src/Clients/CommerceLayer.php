@@ -52,6 +52,7 @@ class CommerceLayer
         $callback = function () use ($uri, $parameters, $options) {
             $response = $this->request('GET', $uri, [
                 'query' => $parameters,
+                'log_request' => true,
             ] + $options);
 
             return $response['data'] ?? [];
@@ -72,6 +73,7 @@ class CommerceLayer
 
         return $this->request('GET', $uri, [
             'query' => $parameters,
+            'log_request' => true,
         ] + $options);
     }
 
@@ -81,6 +83,7 @@ class CommerceLayer
 
         return $this->request('POST', $uri, [
             'json' => ['data' => $payload],
+            'log_request' => true,
         ] + $options);
     }
 
@@ -90,6 +93,7 @@ class CommerceLayer
 
         return $this->request('PATCH', $uri, [
             'json' => ['data' => $payload],
+            'log_request' => true,
         ] + $options);
     }
 
@@ -97,7 +101,7 @@ class CommerceLayer
     {
         $uri = $this->buildUri($resource, $id);
 
-        return $this->request('DELETE', $uri, $options);
+        return $this->request('DELETE', $uri, ['log_request' => true] + $options);
     }
 
     protected function request(string $method, string $uri, array $options = []): array
