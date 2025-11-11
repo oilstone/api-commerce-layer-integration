@@ -395,6 +395,29 @@ class Repository implements RepositoryInterface
             return [];
         }
 
+        if (array_is_list($conditions)) {
+            return array_map(function ($condition) {
+                if (! is_array($condition) || $condition === []) {
+                    return $condition;
+                }
+
+                if (! isset($condition[0]) || ! is_string($condition[0])) {
+                    return $condition;
+                }
+
+                $condition = array_values($condition);
+
+                $valueIndex = array_key_exists(2, $condition) ? 2 : 1;
+
+                [$field, $value] = $this->reverseConditionComponents($condition[0], $condition[$valueIndex] ?? null);
+
+                $condition[0] = $field;
+                $condition[$valueIndex] = $value;
+
+                return $condition;
+            }, $conditions);
+        }
+
         $reversed = $this->reverseAttributes($conditions, true, true);
 
         if ($this->schema) {
