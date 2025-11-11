@@ -467,6 +467,14 @@ class Query
         $flattened['id'] = $resource['id'] ?? $id;
         $flattened['type'] = $type;
 
+        // Seed the resolved cache with a placeholder to guard against cyclic
+        // relationship graphs. This prevents recursive calls from re-entering
+        // the same resource before it has been fully resolved.
+        $resolved[$type][$id] = [
+            'id' => $flattened['id'],
+            'type' => $flattened['type'],
+        ];
+
         if (isset($resource['relationships']) && is_array($resource['relationships'])) {
             foreach ($resource['relationships'] as $name => $relationship) {
                 if (! is_array($relationship)) {
