@@ -55,7 +55,7 @@ class CommerceLayer
                 'log_request' => true,
             ] + $options);
 
-            return $response['data'] ?? [];
+            return $response ?? [];
         };
 
         if (($options['use_cache'] ?? true) && $this->cacheHandler) {
