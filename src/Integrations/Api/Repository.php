@@ -12,7 +12,9 @@ use ArgumentCountError;
 use Oilstone\ApiCommerceLayerIntegration\Cache\QueryCacheHandler;
 use Oilstone\ApiCommerceLayerIntegration\Clients\CommerceLayer;
 use Oilstone\ApiCommerceLayerIntegration\Exceptions\ObjectNotSpecifiedException;
+use Oilstone\ApiCommerceLayerIntegration\Exceptions\RecordNotFoundException;
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Api\Bridge\QueryResolver;
+use Oilstone\ApiCommerceLayerIntegration\Integrations\Api\Results\Collection as ApiResultCollection;
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Api\Results\Record as ApiResultRecord;
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Api\Transformers\Transformer as DefaultTransformer;
 use Oilstone\ApiCommerceLayerIntegration\Query;
@@ -193,6 +195,94 @@ class Repository implements RepositoryInterface
         return $this->resource;
     }
 
+    public function getRecords(array $conditions = [], array $options = [], ?string $resource = null): ResultCollectionInterface
+    {
+        $repository = $this->repository($resource);
+
+        $options['select'] = $options['select'] ?? $this->getDefaultFields();
+
+        $conditions = $this->reverseConditions($conditions);
+        $options = $this->prepareRecordOptions($options);
+
+        $records = $repository->get($conditions, $options);
+
+        $transformed = array_map(fn (array $record) => $this->transformRecord($record), $records);
+
+        return ApiResultCollection::make($transformed);
+    }
+
+    public function findRecord(string $id, array $options = [], ?string $resource = null): ?ResultRecordInterface
+    {
+        $repository = $this->repository($resource);
+
+        $options['select'] = $options['select'] ?? $this->getDefaultFields();
+        $options = $this->prepareRecordOptions($options);
+
+        $record = $repository->find($id, $options);
+
+        if (! $record) {
+            return null;
+        }
+
+        return $this->transformRecord($record);
+    }
+
+    public function findRecordOrFail(string $id, array $options = [], ?string $resource = null): ResultRecordInterface
+    {
+        $record = $this->findRecord($id, $options, $resource);
+
+        if (! $record) {
+            throw new RecordNotFoundException('The requested record could not be found.');
+        }
+
+        return $record;
+    }
+
+    public function firstRecord(array $conditions = [], array $options = [], ?string $resource = null): ?ResultRecordInterface
+    {
+        $repository = $this->repository($resource);
+
+        $options['select'] = $options['select'] ?? $this->getDefaultFields();
+        $options['limit'] = $options['limit'] ?? 1;
+
+        $conditions = $this->reverseConditions($conditions);
+        $options = $this->prepareRecordOptions($options);
+
+        $records = $repository->get($conditions, $options);
+        $record = $records[0] ?? null;
+
+        if (! $record) {
+            return null;
+        }
+
+        return $this->transformRecord($record);
+    }
+
+    public function firstRecordOrFail(array $conditions = [], array $options = [], ?string $resource = null): ResultRecordInterface
+    {
+        $record = $this->firstRecord($conditions, $options, $resource);
+
+        if (! $record) {
+            throw new RecordNotFoundException('The requested record could not be found.');
+        }
+
+        return $record;
+    }
+
+    public function countRecords(array $conditions = [], array $options = [], ?string $resource = null): int
+    {
+        $repository = $this->repository($resource);
+
+        $conditions = $this->reverseConditions($conditions);
+        $options = $this->prepareRecordOptions($options);
+
+        $options['select'] = $options['select'] ?? [$this->identifier];
+
+        $records = $repository->get($conditions, $options);
+
+        return count($records);
+    }
+
     public function getByKey(Pipe $pipe): ?ResultRecordInterface
     {
         return (new QueryResolver($this->newQuery(), $pipe, $this->getDefaultFields()))->byKey();
@@ -297,6 +387,118 @@ class Repository implements RepositoryInterface
         }
 
         return $resultRecord;
+    }
+
+    protected function reverseConditions(array $conditions): array
+    {
+        if (! $conditions) {
+            return [];
+        }
+
+        if (array_is_list($conditions)) {
+            return array_map(function ($condition) {
+                if (! is_array($condition) || $condition === []) {
+                    return $condition;
+                }
+
+                if (! isset($condition[0]) || ! is_string($condition[0])) {
+                    return $condition;
+                }
+
+                $condition = array_values($condition);
+
+                $valueIndex = array_key_exists(2, $condition) ? 2 : 1;
+
+                [$field, $value] = $this->reverseConditionComponents($condition[0], $condition[$valueIndex] ?? null);
+
+                $condition[0] = $field;
+                $condition[$valueIndex] = $value;
+
+                return $condition;
+            }, $conditions);
+        }
+
+        $reversed = $this->reverseAttributes($conditions, true, true);
+
+        if ($this->schema) {
+            $reversed = $this->stripDefaultValues($reversed, $this->getDefaultValues(), $conditions);
+        }
+
+        return $reversed;
+    }
+
+    protected function prepareRecordOptions(array $options): array
+    {
+        if (! isset($options['conditions'])) {
+            return $options;
+        }
+
+        $options['conditions'] = array_map(function ($condition) {
+            if (! is_array($condition) || $condition === []) {
+                return $condition;
+            }
+
+            if (! isset($condition[0]) || ! is_string($condition[0])) {
+                return $condition;
+            }
+
+            $condition = array_values($condition);
+
+            $valueIndex = array_key_exists(2, $condition) ? 2 : 1;
+            [$field, $value] = $this->reverseConditionComponents($condition[0], $condition[$valueIndex] ?? null);
+
+            $condition[0] = $field;
+            $condition[$valueIndex] = $value;
+
+            return $condition;
+        }, $options['conditions']);
+
+        return $options;
+    }
+
+    protected function reverseConditionComponents(string $field, mixed $value): array
+    {
+        $reversed = $this->reverseConditions([$field => $value]);
+
+        if ($reversed === []) {
+            return [$field, $value];
+        }
+
+        $reversedField = array_key_first($reversed);
+
+        if ($reversedField === null) {
+            return [$field, $value];
+        }
+
+        return [$reversedField, $reversed[$reversedField] ?? $value];
+    }
+
+    protected function stripDefaultValues(array $reversed, array $defaults, array $provided): array
+    {
+        foreach ($defaults as $key => $value) {
+            if (! array_key_exists($key, $reversed)) {
+                continue;
+            }
+
+            if (is_array($value)) {
+                $childProvided = is_array($provided[$key] ?? null) ? $provided[$key] : [];
+                $childReversed = is_array($reversed[$key]) ? $reversed[$key] : [];
+
+                $reversed[$key] = $this->stripDefaultValues($childReversed, $value, $childProvided);
+
+                if ($reversed[$key] === []) {
+                    unset($reversed[$key]);
+                }
+
+                continue;
+            }
+
+            if (! array_key_exists($key, $provided)) {
+                unset($reversed[$key]);
+            }
+        }
+
+        return $reversed;
     }
 
     protected function reverseAttributes(array $attributes, bool $allowNull = false, bool $force = false): array
