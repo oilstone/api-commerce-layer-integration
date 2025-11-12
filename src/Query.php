@@ -98,36 +98,29 @@ class Query
     {
         $relationship = trim($relationship);
 
-        if ($relationship !== '') {
-            [$relationship, $fields] = $this->parseInclude($relationship);
-
-            if ($relationship !== '') {
-                $this->includes[] = $relationship;
-
-                foreach ($fields as $field) {
-                    $this->relationshipFields[$relationship][] = $field;
-                    $this->relationshipFieldsFromIncludes[$relationship][] = $field;
-                }
-            }
+        if ($relationship === '') {
+            return $this;
         }
+
+        [$relationship, $fields] = $this->parseInclude($relationship);
+
+        if ($relationship === '') {
+            return $this;
+        }
+
+        $this->includes[] = $relationship;
+        $this->addRelationshipFields($relationship, $fields, true);
 
         return $this;
     }
 
     public function select(array|string $fields): static
     {
-        $preservedRelationshipFields = $this->relationshipFieldsFromIncludes;
+        $this->resetSelection();
 
-        $this->fields = [];
-        $this->relationshipFields = [];
-
-        foreach ($preservedRelationshipFields as $relationship => $relationshipFields) {
-            foreach ($relationshipFields as $field) {
-                $this->relationshipFields[$relationship][] = $field;
-            }
-        }
-
-        $fields = is_array($fields) ? $fields : array_map('trim', explode(',', (string) $fields));
+        $fields = is_array($fields)
+            ? $fields
+            : array_map('trim', explode(',', (string) $fields));
 
         if ($fields === []) {
             return $this;
@@ -144,6 +137,29 @@ class Query
         }
 
         return $this;
+    }
+
+    protected function resetSelection(): void
+    {
+        $preservedRelationshipFields = $this->relationshipFieldsFromIncludes;
+
+        $this->fields = [];
+        $this->relationshipFields = [];
+
+        foreach ($preservedRelationshipFields as $relationship => $fields) {
+            $this->addRelationshipFields($relationship, $fields);
+        }
+    }
+
+    protected function addRelationshipFields(string $relationship, array $fields, bool $trackIncludes = false): void
+    {
+        foreach ($fields as $field) {
+            $this->relationshipFields[$relationship][] = $field;
+
+            if ($trackIncludes) {
+                $this->relationshipFieldsFromIncludes[$relationship][] = $field;
+            }
+        }
     }
 
     public function where(...$arguments): static
@@ -178,57 +194,121 @@ class Query
 
     protected function addCondition(string $boolean, ...$arguments): static
     {
-        if (! $arguments) {
+        if ($arguments === []) {
             throw new InvalidQueryArgumentsException();
         }
 
-        if (is_callable($arguments[0])) {
-            $arguments[0]($this);
+        $this->processConditionArguments($boolean, $arguments);
 
-            return $this;
+        return $this;
+    }
+
+    protected function processConditionArguments(string $boolean, array $arguments): void
+    {
+        if ($arguments === []) {
+            return;
         }
 
-        if (is_array($arguments[0])) {
-            if ($this->isConditionArray($arguments[0])) {
-                return $this->addCondition($boolean, ...$arguments[0]);
-            }
+        if (! array_is_list($arguments)) {
+            $this->processAssociativeConditionArguments($boolean, $arguments);
 
-            foreach ($arguments[0] as $field => $value) {
-                if (is_int($field)) {
-                    if (is_array($value) && $this->isConditionArray($value)) {
-                        $this->addCondition($boolean, ...$value);
-                        continue;
-                    }
+            return;
+        }
 
-                    $this->addCondition($boolean, $value);
-                    continue;
-                }
+        $first = $arguments[0] ?? null;
 
-                $this->addCondition($boolean, $field, '=', $value);
-            }
+        if (is_callable($first)) {
+            $first($this);
 
-            return $this;
+            return;
+        }
+
+        if (is_array($first) && count($arguments) === 1) {
+            $this->processConditionArguments($boolean, $first);
+
+            return;
+        }
+
+        if (is_array($first)) {
+            $this->processListConditionArguments($boolean, $arguments);
+
+            return;
         }
 
         if (count($arguments) === 1) {
             throw new InvalidQueryArgumentsException();
         }
 
-        if (count($arguments) === 2) {
-            [$field, $value] = $arguments;
-            $operator = '=';
-        } else {
-            [$field, $operator, $value] = $arguments;
+        $this->conditions[] = $this->formatCondition($boolean, $arguments);
+    }
+
+    protected function processAssociativeConditionArguments(string $boolean, array $arguments): void
+    {
+        if ($this->isConditionArray($arguments)) {
+            $this->conditions[] = $this->formatCondition($boolean, $arguments);
+
+            return;
         }
 
-        $this->conditions[] = [
+        foreach ($arguments as $field => $value) {
+            if (is_int($field)) {
+                $this->processConditionArguments($boolean, is_array($value) ? $value : [$value]);
+
+                continue;
+            }
+
+            $this->conditions[] = $this->formatCondition($boolean, [$field, '=', $value]);
+        }
+    }
+
+    protected function processListConditionArguments(string $boolean, array $arguments): void
+    {
+        if ($this->isConditionArray($arguments)) {
+            $this->conditions[] = $this->formatCondition($boolean, $arguments);
+
+            return;
+        }
+
+        foreach ($arguments as $argument) {
+            $this->processConditionArguments($boolean, is_array($argument) ? $argument : [$argument]);
+        }
+    }
+
+    protected function formatCondition(string $boolean, array $arguments): array
+    {
+        $parts = $this->normaliseConditionParts($arguments);
+
+        return [
             'boolean' => $boolean,
+            'field' => $parts['field'],
+            'operator' => strtolower((string) $parts['operator']),
+            'value' => $parts['value'],
+        ];
+    }
+
+    protected function normaliseConditionParts(array $arguments): array
+    {
+        if (count($arguments) === 2) {
+            [$field, $value] = array_values($arguments);
+
+            return [
+                'field' => $field,
+                'operator' => '=',
+                'value' => $value,
+            ];
+        }
+
+        if (count($arguments) < 3) {
+            throw new InvalidQueryArgumentsException();
+        }
+
+        [$field, $operator, $value] = array_values($arguments);
+
+        return [
             'field' => $field,
-            'operator' => strtolower((string) $operator),
+            'operator' => $operator,
             'value' => $value,
         ];
-
-        return $this;
     }
 
     public function orderBy(string $field, string $direction = 'asc'): static
@@ -300,19 +380,7 @@ class Query
         $parameters = $this->buildParameters();
         $options = $this->cacheOptions;
 
-        $callback = fn () => $this->client->listResources($this->resource, $parameters, $options);
-
-        if ($this->cacheHandler) {
-            $cacheKey = $this->resource.'?'.http_build_query($parameters);
-
-            $response = $this->cacheHandler->rememberQuery($cacheKey, $callback, $options);
-
-            $this->lastResponse = $this->prepareResponse($response);
-
-            return $this->lastResponse['data'] ?? [];
-        }
-
-        $response = $callback();
+        $response = $this->executeListQuery($parameters, $options);
 
         $this->lastResponse = $this->prepareResponse($response);
 
@@ -573,6 +641,19 @@ class Query
         }
 
         return $parameters;
+    }
+
+    protected function executeListQuery(array $parameters, array $options): mixed
+    {
+        $callback = fn () => $this->client->listResources($this->resource, $parameters, $options);
+
+        if (! $this->cacheHandler) {
+            return $callback();
+        }
+
+        $cacheKey = $this->resource.'?'.http_build_query($parameters);
+
+        return $this->cacheHandler->rememberQuery($cacheKey, $callback, $options);
     }
 
     protected function compileFilters(): array
