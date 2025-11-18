@@ -153,13 +153,26 @@ class Query
 
     protected function addRelationshipFields(string $relationship, array $fields, bool $trackIncludes = false): void
     {
+        $normalisedRelationship = $this->normaliseRelationshipKey($relationship);
+
         foreach ($fields as $field) {
-            $this->relationshipFields[$relationship][] = $field;
+            $this->relationshipFields[$normalisedRelationship][] = $field;
 
             if ($trackIncludes) {
                 $this->relationshipFieldsFromIncludes[$relationship][] = $field;
             }
         }
+    }
+
+    protected function normaliseRelationshipKey(string $relationship): string
+    {
+        $segments = array_values(array_filter(array_map('trim', explode('.', $relationship))));
+
+        if ($segments === []) {
+            return $relationship;
+        }
+
+        return (string) array_pop($segments);
     }
 
     public function where(...$arguments): static
