@@ -528,7 +528,7 @@ class Repository implements RepositoryInterface
                 continue;
             }
 
-            if ($property->hasMeta('validationOnly') || $property->hasMeta('isRelation')) {
+            if ($property->hasMeta('validationOnly') || $property->hasMeta('calculated') || $property->hasMeta('isRelation')) {
                 continue;
             }
 
