@@ -346,6 +346,31 @@ class Repository implements RepositoryInterface
         return $this->transformRecord($record);
     }
 
+    public function upsertRecord(array $conditions, array $attributes, array $options = [], ?string $resource = null): ResultRecordInterface
+    {
+        $repository = $this->repository($resource);
+
+        $conditions = $this->reverseConditions($conditions);
+        $attributes = $this->reverseAttributes($attributes, true, true);
+
+        $options['select'] = $options['select'] ?? $this->getDefaultFields();
+
+        $options['find'] = $this->prepareRecordOptions($options['find'] ?? []);
+        $options['find']['select'] = $options['find']['select'] ?? $options['select'];
+
+        $result = $repository->upsert($conditions, $attributes, $options);
+
+        $id = $result['id'] ?? ($result[$this->identifier] ?? null);
+
+        if ($id) {
+            $record = $repository->findOrFail($id, ['select' => $options['select']]);
+        } else {
+            $record = $result;
+        }
+
+        return $this->transformRecord($record);
+    }
+
     public function repository(?string $resource = null): BaseRepository
     {
         $resource ??= $this->resource;

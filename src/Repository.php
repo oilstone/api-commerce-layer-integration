@@ -232,6 +232,25 @@ class Repository
         return $response['data'] ?? $response;
     }
 
+    public function upsert(array $conditions, array $attributes, array $options = []): array
+    {
+        $existing = $this->find($conditions, $options['find'] ?? []);
+
+        if ($existing) {
+            $identifier = $existing[$this->getIdentifier()] ?? null;
+
+            if (! $identifier) {
+                throw new ObjectNotSpecifiedException('The identifier could not be resolved for the existing record.');
+            }
+
+            return $this->update((string) $identifier, $attributes, $options['update'] ?? []);
+        }
+
+        $identifierAttributes = $this->extractConditionAttributes($conditions);
+
+        return $this->create(array_replace_recursive($attributes, $identifierAttributes), $options['create'] ?? []);
+    }
+
     public function update(string $id, array $attributes, array $options = []): array
     {
         $payload = array_replace_recursive($this->getDefaultValues(), $attributes);
@@ -257,5 +276,56 @@ class Repository
         }
 
         return $this->client;
+    }
+
+    protected function extractConditionAttributes(array $conditions): array
+    {
+        $attributes = [];
+
+        foreach ($conditions as $condition) {
+            if (is_callable($condition) || ! is_array($condition)) {
+                continue;
+            }
+
+            if (! array_is_list($condition)) {
+                foreach ($condition as $field => $value) {
+                    if (is_int($field)) {
+                        if (is_array($value)) {
+                            $attributes = array_replace_recursive($attributes, $this->extractConditionAttributes([$value]));
+                        }
+
+                        continue;
+                    }
+
+                    $attributes[$field] = $value;
+                }
+
+                continue;
+            }
+
+            $field = $condition[0] ?? null;
+
+            if (is_scalar($field) && ! is_callable($field)) {
+                if (count($condition) === 2) {
+                    $attributes[$field] = $condition[1];
+
+                    continue;
+                }
+
+                if (count($condition) >= 3 && ($condition[1] === '=' || $condition[1] === null)) {
+                    $attributes[$field] = $condition[2];
+
+                    continue;
+                }
+            }
+
+            foreach ($condition as $value) {
+                if (is_array($value)) {
+                    $attributes = array_replace_recursive($attributes, $this->extractConditionAttributes([$value]));
+                }
+            }
+        }
+
+        return $attributes;
     }
 }
