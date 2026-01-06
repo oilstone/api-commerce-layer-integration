@@ -243,6 +243,8 @@ class Repository
                 throw new ObjectNotSpecifiedException('The identifier could not be resolved for the existing record.');
             }
 
+            $attributes['id'] = $identifier;
+
             return $this->update((string) $identifier, $attributes, $options['update'] ?? []);
         }
 
