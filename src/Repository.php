@@ -234,7 +234,7 @@ class Repository
 
     public function upsert(array $conditions, array $attributes, array $options = []): array
     {
-        $existing = $this->find($conditions, $options['find'] ?? []);
+        $existing = $this->find($conditions, $options['find'] ?? $options);
 
         if ($existing) {
             $identifier = $existing[$this->getIdentifier()] ?? null;
@@ -245,12 +245,18 @@ class Repository
 
             $attributes['id'] = $identifier;
 
-            return $this->update((string) $identifier, $attributes, $options['update'] ?? []);
+            return $this->update((string) $identifier, $attributes, $options['update'] ?? $options);
         }
 
         $identifierAttributes = $this->extractConditionAttributes($conditions);
 
-        return $this->create(array_replace_recursive($attributes, $identifierAttributes), $options['create'] ?? []);
+        if (isset($attributes['attributes']) && is_array($attributes['attributes'])) {
+            $attributes['attributes'] = array_replace_recursive($attributes['attributes'], $identifierAttributes);
+        } else {
+            $attributes = array_replace_recursive($attributes, $identifierAttributes);
+        }
+
+        return $this->create($attributes, $options['create'] ?? $options);
     }
 
     public function update(string $id, array $attributes, array $options = []): array
