@@ -305,7 +305,9 @@ class Repository
                         continue;
                     }
 
-                    $attributes[$field] = $value;
+                    if (! is_string($field) || ! str_contains($field, '.')) {
+                        $attributes[$field] = $value;
+                    }
                 }
 
                 continue;
@@ -315,13 +317,17 @@ class Repository
 
             if (is_scalar($field) && ! is_callable($field)) {
                 if (count($condition) === 2) {
-                    $attributes[$field] = $condition[1];
+                    if (! is_string($field) || ! str_contains($field, '.')) {
+                        $attributes[$field] = $condition[1];
+                    }
 
                     continue;
                 }
 
                 if (count($condition) >= 3 && ($condition[1] === '=' || $condition[1] === null)) {
-                    $attributes[$field] = $condition[2];
+                    if (! is_string($field) || ! str_contains($field, '.')) {
+                        $attributes[$field] = $condition[2];
+                    }
 
                     continue;
                 }
