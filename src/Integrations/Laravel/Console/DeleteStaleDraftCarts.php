@@ -9,9 +9,9 @@ use Oilstone\ApiCommerceLayerIntegration\Query;
 
 class DeleteStaleDraftCarts extends Command
 {
-    protected $signature = 'commerce-layer:cart:draft:purge {--days=30 : Delete draft carts older than the provided number of days} {--force : Skip the confirmation prompt}';
+    protected $signature = 'commerce-layer:cart:draft:purge {--days=30 : Delete pending unpaid carts older than the provided number of days} {--force : Skip the confirmation prompt}';
 
-    protected $description = 'Delete all draft cart orders that have not been completed or paid and are older than a cutoff date';
+    protected $description = 'Delete all pending unpaid cart orders that are older than a cutoff date';
 
     protected int $pageSize = 100;
 
@@ -33,18 +33,18 @@ class DeleteStaleDraftCarts extends Command
         $orderIds = $this->fetchIds(
             $client,
             static fn (Query $query) => $query
-                ->where('status', 'draft')
-                ->where('payment_status', '!=', 'paid')
+                ->where('status', 'pending')
+                ->where('payment_status', 'unpaid')
                 ->where('created_at', '<=', $cutoff),
         );
 
         if ($orderIds === []) {
-            $this->info('No draft carts matched the criteria.');
+            $this->info('No pending unpaid carts matched the criteria.');
 
             return self::SUCCESS;
         }
 
-        if (! $this->option('force') && ! $this->confirm(sprintf('Delete %d draft cart order(s)?', count($orderIds)))) {
+        if (! $this->option('force') && ! $this->confirm(sprintf('Delete %d pending unpaid cart order(s)?', count($orderIds)))) {
             $this->info('No changes were made.');
 
             return self::SUCCESS;
@@ -54,7 +54,7 @@ class DeleteStaleDraftCarts extends Command
             $client->delete('orders', $orderId);
         }
 
-        $this->info(sprintf('Deleted %d draft cart order(s).', count($orderIds)));
+        $this->info(sprintf('Deleted %d pending unpaid cart order(s).', count($orderIds)));
 
         return self::SUCCESS;
     }
