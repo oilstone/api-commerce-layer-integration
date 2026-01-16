@@ -91,7 +91,7 @@ class DeleteSku extends Command
                     ->get();
             } catch (CommerceLayerException $exception) {
                 if ($exception->getStatusCode() === 404) {
-                    return [];
+                    break;
                 }
 
                 throw $exception;
