@@ -4,6 +4,7 @@ namespace Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console;
 
 use Illuminate\Console\Command;
 use Oilstone\ApiCommerceLayerIntegration\Clients\CommerceLayer;
+use Oilstone\ApiCommerceLayerIntegration\Exceptions\CommerceLayerException;
 use Oilstone\ApiCommerceLayerIntegration\Query;
 
 class DeleteSku extends Command
@@ -83,10 +84,18 @@ class DeleteSku extends Command
 
             $constraints($query);
 
-            $results = $query
-                ->limit($this->pageSize)
-                ->offset($offset)
-                ->get();
+            try {
+                $results = $query
+                    ->limit($this->pageSize)
+                    ->offset($offset)
+                    ->get();
+            } catch (CommerceLayerException $exception) {
+                if ($exception->getStatusCode() === 404) {
+                    return [];
+                }
+
+                throw $exception;
+            }
 
             foreach ($results as $item) {
                 if (isset($item['id'])) {
