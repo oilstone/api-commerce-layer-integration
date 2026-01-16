@@ -31,6 +31,7 @@ class DeleteStaleDraftCarts extends Command
         $client = app(CommerceLayer::class);
 
         $orderIds = $this->fetchIds(
+            'orders',
             $client,
             static fn (Query $query) => $query
                 ->where('payment_status', 'unpaid')
@@ -53,22 +54,36 @@ class DeleteStaleDraftCarts extends Command
             return self::SUCCESS;
         }
 
+        $deletedLineItems = 0;
+
         foreach ($orderIds as $orderId) {
+            $lineItemIds = $this->fetchIds(
+                'line_items',
+                $client,
+                static fn (Query $query) => $query->where('order_id', $orderId),
+            );
+
+            foreach ($lineItemIds as $lineItemId) {
+                $client->delete('line_items', $lineItemId);
+                $deletedLineItems++;
+            }
+
             $client->delete('orders', $orderId);
         }
 
         $this->info(sprintf('Deleted %d pending unpaid cart order(s).', count($orderIds)));
+        $this->info(sprintf('Deleted %d line item%s.', $deletedLineItems, $deletedLineItems === 1 ? '' : 's'));
 
         return self::SUCCESS;
     }
 
-    protected function fetchIds(CommerceLayer $client, callable $constraints): array
+    protected function fetchIds(string $resource, CommerceLayer $client, callable $constraints): array
     {
         $ids = [];
         $offset = 0;
 
         do {
-            $query = Query::make('orders', $client)
+            $query = Query::make($resource, $client)
                 ->select(['id']);
 
             $constraints($query);
