@@ -36,10 +36,7 @@ class DeleteStaleDraftCarts extends Command
             static fn (Query $query) => $query
                 ->where('payment_status', 'unpaid')
                 ->where('created_at', '<=', $cutoff)
-                ->where(function (Query $q) {
-                    $q->where('status', 'pending')
-                      ->orWhere('status', 'draft');
-                }),
+                ->where('status', 'IN', ['pending', 'draft']),
         );
 
         if ($orderIds === []) {
