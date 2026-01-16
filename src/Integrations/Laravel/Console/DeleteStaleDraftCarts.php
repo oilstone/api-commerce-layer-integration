@@ -5,6 +5,7 @@ namespace Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Oilstone\ApiCommerceLayerIntegration\Clients\CommerceLayer;
+use Oilstone\ApiCommerceLayerIntegration\Exceptions\CommerceLayerException;
 use Oilstone\ApiCommerceLayerIntegration\Query;
 
 class DeleteStaleDraftCarts extends Command
@@ -61,11 +62,12 @@ class DeleteStaleDraftCarts extends Command
             );
 
             foreach ($lineItemIds as $lineItemId) {
-                $client->delete('line_items', $lineItemId);
-                $deletedLineItems++;
+                if ($this->deleteResource($client, 'line_items', $lineItemId)) {
+                    $deletedLineItems++;
+                }
             }
 
-            $client->delete('orders', $orderId);
+            $this->deleteResource($client, 'orders', $orderId);
         }
 
         $this->info(sprintf('Deleted %d pending unpaid cart order(s).', count($orderIds)));
@@ -101,5 +103,22 @@ class DeleteStaleDraftCarts extends Command
         } while ($count === $this->pageSize);
 
         return $ids;
+    }
+
+    protected function deleteResource(CommerceLayer $client, string $resource, string $id): bool
+    {
+        try {
+            $client->delete($resource, $id);
+
+            return true;
+        } catch (CommerceLayerException $exception) {
+            if ($exception->getStatusCode() !== 404) {
+                throw $exception;
+            }
+
+            $this->warn(sprintf('Skipping %s %s because it no longer exists.', $resource, $id));
+
+            return false;
+        }
     }
 }
