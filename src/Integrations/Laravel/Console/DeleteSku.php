@@ -9,7 +9,7 @@ use Oilstone\ApiCommerceLayerIntegration\Query;
 
 class DeleteSku extends Command
 {
-    protected $signature = 'commerce-layer:sku:delete {skuId} {--force : Skip the confirmation prompt}';
+    protected $signature = 'commerce-layer:sku:delete {skuIds* : One or more SKU ids} {--force : Skip the confirmation prompt}';
 
     protected $description = 'Delete a SKU and its related price list entries and price frequency tiers';
 
@@ -17,15 +17,25 @@ class DeleteSku extends Command
 
     public function handle(): int
     {
-        $skuId = (string) $this->argument('skuId');
+        $skuIds = array_values(array_filter(
+            array_map('strval', (array) $this->argument('skuIds')),
+            static fn (string $skuId) => $skuId !== '',
+        ));
 
-        if ($skuId === '') {
-            $this->error('A SKU id is required.');
+        if ($skuIds === []) {
+            $this->error('At least one SKU id is required.');
 
             return self::FAILURE;
         }
 
-        if (! $this->option('force') && ! $this->confirm('Delete the SKU and related price data?')) {
+        if (
+            ! $this->option('force')
+            && ! $this->confirm(sprintf(
+                'Delete %d SKU%s and related price data?',
+                count($skuIds),
+                count($skuIds) === 1 ? '' : 's',
+            ))
+        ) {
             $this->info('No changes were made.');
 
             return self::SUCCESS;
@@ -34,41 +44,43 @@ class DeleteSku extends Command
         /** @var CommerceLayer $client */
         $client = app(CommerceLayer::class);
 
-        $priceListEntryIds = $this->fetchIds(
-            'price_list_entries',
-            $client,
-            static fn (Query $query) => $query->where('sku_id', $skuId),
-        );
-
-        $deletedTiers = 0;
-        $deletedEntries = 0;
-
-        foreach ($priceListEntryIds as $entryId) {
-            $tierIds = $this->fetchIds(
-                'price_frequency_tiers',
+        foreach ($skuIds as $skuId) {
+            $priceListEntryIds = $this->fetchIds(
+                'price_list_entries',
                 $client,
-                static fn (Query $query) => $query->where('price_list_entry_id', $entryId),
+                static fn (Query $query) => $query->where('sku_id', $skuId),
             );
 
-            foreach ($tierIds as $tierId) {
-                $client->delete('price_frequency_tiers', $tierId);
-                $deletedTiers++;
+            $deletedTiers = 0;
+            $deletedEntries = 0;
+
+            foreach ($priceListEntryIds as $entryId) {
+                $tierIds = $this->fetchIds(
+                    'price_frequency_tiers',
+                    $client,
+                    static fn (Query $query) => $query->where('price_list_entry_id', $entryId),
+                );
+
+                foreach ($tierIds as $tierId) {
+                    $client->delete('price_frequency_tiers', $tierId);
+                    $deletedTiers++;
+                }
+
+                $client->delete('price_list_entries', $entryId);
+                $deletedEntries++;
             }
 
-            $client->delete('price_list_entries', $entryId);
-            $deletedEntries++;
+            $client->delete('skus', $skuId);
+
+            $this->info(sprintf(
+                'Deleted SKU %s, %d price list entr%s, and %d price frequency tier%s.',
+                $skuId,
+                $deletedEntries,
+                $deletedEntries === 1 ? 'y' : 'ies',
+                $deletedTiers,
+                $deletedTiers === 1 ? '' : 's',
+            ));
         }
-
-        $client->delete('skus', $skuId);
-
-        $this->info(sprintf(
-            'Deleted SKU %s, %d price list entr%s, and %d price frequency tier%s.',
-            $skuId,
-            $deletedEntries,
-            $deletedEntries === 1 ? 'y' : 'ies',
-            $deletedTiers,
-            $deletedTiers === 1 ? '' : 's',
-        ));
 
         return self::SUCCESS;
     }
