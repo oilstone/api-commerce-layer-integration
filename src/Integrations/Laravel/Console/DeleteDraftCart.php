@@ -10,7 +10,7 @@ class DeleteDraftCart extends Command
 {
     protected $signature = 'commerce-layer:cart:draft:delete {orderId} {--force : Skip the confirmation prompt}';
 
-    protected $description = 'Delete a draft cart order that has not been completed or paid';
+    protected $description = 'Delete a pending cart order that is still unpaid';
 
     public function handle(): int
     {
@@ -39,13 +39,13 @@ class DeleteDraftCart extends Command
         $status = $attributes['status'] ?? null;
         $paymentStatus = $attributes['payment_status'] ?? null;
 
-        if ($status !== 'draft' || $paymentStatus === 'paid') {
-            $this->warn('The order is not a draft cart or has already been paid.');
+        if ($status !== 'pending' || $paymentStatus !== 'unpaid') {
+            $this->warn('The order is not a pending unpaid cart.');
 
             return self::FAILURE;
         }
 
-        if (! $this->option('force') && ! $this->confirm('Delete the draft cart order?')) {
+        if (! $this->option('force') && ! $this->confirm('Delete the pending unpaid cart order?')) {
             $this->info('No changes were made.');
 
             return self::SUCCESS;
@@ -53,7 +53,7 @@ class DeleteDraftCart extends Command
 
         $client->delete('orders', $orderId);
 
-        $this->info(sprintf('Deleted draft cart order %s.', $orderId));
+        $this->info(sprintf('Deleted pending unpaid cart order %s.', $orderId));
 
         return self::SUCCESS;
     }
