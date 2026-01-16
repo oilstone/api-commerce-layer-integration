@@ -12,7 +12,7 @@ class DeleteSku extends Command
 
     protected $description = 'Delete a SKU and its related price list entries and price frequency tiers';
 
-    protected int $pageSize = 100;
+    protected int $pageSize = 25;
 
     public function handle(): int
     {

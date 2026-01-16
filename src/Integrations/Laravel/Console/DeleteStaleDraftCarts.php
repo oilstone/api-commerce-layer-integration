@@ -13,7 +13,7 @@ class DeleteStaleDraftCarts extends Command
 
     protected $description = 'Delete all pending unpaid cart orders that are older than a cutoff date';
 
-    protected int $pageSize = 100;
+    protected int $pageSize = 25;
 
     public function handle(): int
     {
@@ -33,9 +33,12 @@ class DeleteStaleDraftCarts extends Command
         $orderIds = $this->fetchIds(
             $client,
             static fn (Query $query) => $query
-                ->where('status', 'pending')
                 ->where('payment_status', 'unpaid')
-                ->where('created_at', '<=', $cutoff),
+                ->where('created_at', '<=', $cutoff)
+                ->where(function (Query $q) {
+                    $q->where('status', 'pending')
+                      ->orWhere('status', 'draft');
+                }),
         );
 
         if ($orderIds === []) {
