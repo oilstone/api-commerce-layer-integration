@@ -9,6 +9,9 @@ use Illuminate\Support\ServiceProvider as BaseServiceProvider;
 use Oilstone\ApiCommerceLayerIntegration\Cache\QueryCacheHandler;
 use Oilstone\ApiCommerceLayerIntegration\Clients\CommerceLayer;
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\ClearCache;
+use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteDraftCart;
+use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteSku;
+use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteStaleDraftCarts;
 use RuntimeException;
 
 class ServiceProvider extends BaseServiceProvider
@@ -113,6 +116,9 @@ class ServiceProvider extends BaseServiceProvider
 
         $this->commands([
             ClearCache::class,
+            DeleteSku::class,
+            DeleteDraftCart::class,
+            DeleteStaleDraftCarts::class,
         ]);
     }
 }
