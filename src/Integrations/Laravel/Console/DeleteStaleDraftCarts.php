@@ -56,6 +56,8 @@ class DeleteStaleDraftCarts extends Command
         $deletedTransactions = 0;
 
         foreach ($orderIds as $orderId) {
+            $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
+
             $wireTransferIds = $this->fetchIds(
                 'wire_transfers',
                 $client,
@@ -77,8 +79,6 @@ class DeleteStaleDraftCarts extends Command
                     $deletedLineItems++;
                 }
             }
-
-            $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
 
             try {
                 $this->deleteResource($client, 'orders', $orderId);
