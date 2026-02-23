@@ -55,6 +55,16 @@ class DeleteStaleDraftCarts extends Command
         $deletedLineItems = 0;
 
         foreach ($orderIds as $orderId) {
+            $wireTransferIds = $this->fetchIds(
+                'wire_transfers',
+                $client,
+                static fn (Query $query) => $query->where('order_id', $orderId),
+            );
+
+            foreach ($wireTransferIds as $wireTransferId) {
+                $this->deleteResource($client, 'wire_transfers', $wireTransferId);
+            }
+
             $lineItemIds = $this->fetchIds(
                 'line_items',
                 $client,
