@@ -2,6 +2,7 @@
 
 namespace Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console;
 
+use Oilstone\ApiCommerceLayerIntegration\Cache\QueryCacheHandler;
 use Illuminate\Console\Command;
 use Oilstone\ApiCommerceLayerIntegration\Clients\CommerceLayer;
 use Oilstone\ApiCommerceLayerIntegration\Exceptions\CommerceLayerException;
@@ -15,7 +16,7 @@ class DeleteSku extends Command
 
     protected int $pageSize = 25;
 
-    public function handle(): int
+    public function handle(QueryCacheHandler $cacheHandler): int
     {
         $skuIds = array_values(array_filter(
             array_map('strval', (array) $this->argument('skuIds')),
@@ -45,6 +46,9 @@ class DeleteSku extends Command
         $client = app(CommerceLayer::class);
 
         foreach ($skuIds as $skuId) {
+            // Explicitly clear the cache for this SKU's dependencies
+            $cacheHandler->forgetEntryByConditions('price_list_entries', ['sku_id' => $skuId]);
+
             $priceListEntryIds = $this->fetchIds(
                 'price_list_entries',
                 $client,
@@ -55,6 +59,9 @@ class DeleteSku extends Command
             $deletedEntries = 0;
 
             foreach ($priceListEntryIds as $entryId) {
+                // Explicitly clear the cache for this entry's dependencies
+                $cacheHandler->forgetEntryByConditions('price_frequency_tiers', ['price_list_entry_id' => $entryId]);
+
                 $tierIds = $this->fetchIds(
                     'price_frequency_tiers',
                     $client,

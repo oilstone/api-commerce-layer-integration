@@ -3,6 +3,7 @@
 namespace Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console;
 
 use Illuminate\Console\Command;
+use Oilstone\ApiCommerceLayerIntegration\Cache\QueryCacheHandler;
 use Illuminate\Support\Carbon;
 use Oilstone\ApiCommerceLayerIntegration\Clients\CommerceLayer;
 use Oilstone\ApiCommerceLayerIntegration\Exceptions\CommerceLayerException;
@@ -16,7 +17,7 @@ class DeleteStaleDraftCarts extends Command
 
     protected int $pageSize = 25;
 
-    public function handle(): int
+    public function handle(QueryCacheHandler $cacheHandler): int
     {
         $days = (int) $this->option('days');
 
@@ -56,6 +57,11 @@ class DeleteStaleDraftCarts extends Command
         $deletedTransactions = 0;
 
         foreach ($orderIds as $orderId) {
+            // Explicitly clear the cache for this order's dependencies
+            $cacheHandler->forgetEntryByConditions('transactions', ['order_id' => $orderId]);
+            $cacheHandler->forgetEntryByConditions('wire_transfers', ['order_id' => $orderId]);
+            $cacheHandler->forgetEntryByConditions('line_items', ['order_id' => $orderId]);
+
             $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
 
             $wireTransferIds = $this->fetchIds(
