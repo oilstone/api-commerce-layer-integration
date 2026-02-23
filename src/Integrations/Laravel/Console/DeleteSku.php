@@ -69,15 +69,19 @@ class DeleteSku extends Command
                 );
 
                 foreach ($tierIds as $tierId) {
-                    $client->delete('price_frequency_tiers', $tierId);
-                    $deletedTiers++;
+                    if ($this->deleteResource($client, 'price_frequency_tiers', $tierId)) {
+                        $deletedTiers++;
+                    }
                 }
 
-                $client->delete('price_list_entries', $entryId);
-                $deletedEntries++;
+                if ($this->deleteResource($client, 'price_list_entries', $entryId)) {
+                    $deletedEntries++;
+                }
             }
 
-            $client->delete('skus', $skuId);
+            if ($this->deleteResource($client, 'skus', $skuId)) {
+                // Only output success message if the final SKU deletion was successful
+            }
 
             $this->info(sprintf(
                 'Deleted SKU %s, %d price list entr%s, and %d price frequency tier%s.',
@@ -127,5 +131,38 @@ class DeleteSku extends Command
         } while ($count === $this->pageSize);
 
         return $ids;
+    }
+
+    protected function deleteResource(CommerceLayer $client, string $resource, string $id): bool
+    {
+        $attempts = 3;
+        $delay = 250; // Milliseconds
+
+        for ($i = 1; $i <= $attempts; $i++) {
+            try {
+                $client->delete($resource, $id);
+
+                return true;
+            } catch (CommerceLayerException $exception) {
+                if ($exception->getStatusCode() === 404) {
+                    $this->warn(sprintf('Skipping %s %s because it no longer exists.', $resource, $id));
+
+                    return false;
+                }
+
+                if ($i === $attempts || ! $this->isDependentTransactionsException($exception)) {
+                    throw $exception;
+                }
+
+                usleep($delay * 1000 * $i);
+            }
+        }
+
+        return false;
+    }
+
+    protected function isDependentTransactionsException(CommerceLayerException $exception): bool
+    {
+        return str_contains(strtolower($exception->getMessage()), 'dependent transactions');
     }
 }

@@ -159,19 +159,30 @@ class DeleteStaleDraftCarts extends Command
 
     protected function deleteResource(CommerceLayer $client, string $resource, string $id): bool
     {
-        try {
-            $client->delete($resource, $id);
+        $attempts = 3;
+        $delay = 250; // Milliseconds
 
-            return true;
-        } catch (CommerceLayerException $exception) {
-            if ($exception->getStatusCode() !== 404) {
-                throw $exception;
+        for ($i = 1; $i <= $attempts; $i++) {
+            try {
+                $client->delete($resource, $id);
+
+                return true;
+            } catch (CommerceLayerException $exception) {
+                if ($exception->getStatusCode() === 404) {
+                    $this->warn(sprintf('Skipping %s %s because it no longer exists.', $resource, $id));
+
+                    return false;
+                }
+
+                if ($i === $attempts || ! $this->isDependentTransactionsException($exception)) {
+                    throw $exception;
+                }
+
+                usleep($delay * 1000 * $i);
             }
-
-            $this->warn(sprintf('Skipping %s %s because it no longer exists.', $resource, $id));
-
-            return false;
         }
+
+        return false;
     }
 
     protected function deleteTransactionsForOrder(CommerceLayer $client, string $orderId): int
