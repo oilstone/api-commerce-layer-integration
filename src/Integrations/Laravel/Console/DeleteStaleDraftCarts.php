@@ -53,6 +53,7 @@ class DeleteStaleDraftCarts extends Command
         }
 
         $deletedLineItems = 0;
+        $deletedTransactions = 0;
 
         foreach ($orderIds as $orderId) {
             $wireTransferIds = $this->fetchIds(
@@ -77,11 +78,24 @@ class DeleteStaleDraftCarts extends Command
                 }
             }
 
-            $this->deleteResource($client, 'orders', $orderId);
+            $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
+
+            try {
+                $this->deleteResource($client, 'orders', $orderId);
+            } catch (CommerceLayerException $exception) {
+                if (! $this->isDependentTransactionsException($exception)) {
+                    throw $exception;
+                }
+
+                $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
+
+                $this->deleteResource($client, 'orders', $orderId);
+            }
         }
 
         $this->info(sprintf('Deleted %d pending unpaid cart order(s).', count($orderIds)));
         $this->info(sprintf('Deleted %d line item%s.', $deletedLineItems, $deletedLineItems === 1 ? '' : 's'));
+        $this->info(sprintf('Deleted %d transaction%s.', $deletedTransactions, $deletedTransactions === 1 ? '' : 's'));
 
         return self::SUCCESS;
     }
@@ -130,5 +144,29 @@ class DeleteStaleDraftCarts extends Command
 
             return false;
         }
+    }
+
+    protected function deleteTransactionsForOrder(CommerceLayer $client, string $orderId): int
+    {
+        $transactionIds = $this->fetchIds(
+            'transactions',
+            $client,
+            static fn (Query $query) => $query->where('order_id', $orderId),
+        );
+
+        $deletedTransactions = 0;
+
+        foreach ($transactionIds as $transactionId) {
+            if ($this->deleteResource($client, 'transactions', $transactionId)) {
+                $deletedTransactions++;
+            }
+        }
+
+        return $deletedTransactions;
+    }
+
+    protected function isDependentTransactionsException(CommerceLayerException $exception): bool
+    {
+        return str_contains(strtolower($exception->getMessage()), 'dependent transactions');
     }
 }
