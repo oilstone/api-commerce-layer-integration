@@ -4,6 +4,7 @@ namespace Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console;
 
 use Illuminate\Console\Command;
 use Oilstone\ApiCommerceLayerIntegration\Clients\CommerceLayer;
+use Oilstone\ApiCommerceLayerIntegration\Exceptions\CommerceLayerException;
 use Oilstone\ApiCommerceLayerIntegration\Query;
 
 class DeleteDraftCart extends Command
@@ -53,6 +54,20 @@ class DeleteDraftCart extends Command
             return self::SUCCESS;
         }
 
+        $wireTransferIds = $this->fetchIds(
+            'wire_transfers',
+            $client,
+            static fn (Query $query) => $query->where('order_id', $orderId),
+        );
+
+        $deletedWireTransfers = 0;
+
+        foreach ($wireTransferIds as $wireTransferId) {
+            if ($this->deleteResource($client, 'wire_transfers', $wireTransferId)) {
+                $deletedWireTransfers++;
+            }
+        }
+
         $lineItemIds = $this->fetchIds(
             'line_items',
             $client,
@@ -62,16 +77,19 @@ class DeleteDraftCart extends Command
         $deletedLineItems = 0;
 
         foreach ($lineItemIds as $lineItemId) {
-            $client->delete('line_items', $lineItemId);
-            $deletedLineItems++;
+            if ($this->deleteResource($client, 'line_items', $lineItemId)) {
+                $deletedLineItems++;
+            }
         }
 
-        $client->delete('orders', $orderId);
+        $this->deleteResource($client, 'orders', $orderId);
 
         $this->info(sprintf('Deleted pending unpaid cart order %s.', $orderId));
         $this->info(sprintf(
-            'Deleted pending unpaid cart order %s and %d line item%s.',
+            'Deleted pending unpaid cart order %s, %d wire transfer%s, and %d line item%s.',
             $orderId,
+            $deletedWireTransfers,
+            $deletedWireTransfers === 1 ? '' : 's',
             $deletedLineItems,
             $deletedLineItems === 1 ? '' : 's',
         ));
@@ -106,5 +124,22 @@ class DeleteDraftCart extends Command
         } while ($count === $this->pageSize);
 
         return $ids;
+    }
+
+    protected function deleteResource(CommerceLayer $client, string $resource, string $id): bool
+    {
+        try {
+            $client->delete($resource, $id);
+
+            return true;
+        } catch (CommerceLayerException $exception) {
+            if ($exception->getStatusCode() !== 404) {
+                throw $exception;
+            }
+
+            $this->warn(sprintf('Skipping %s %s because it no longer exists.', $resource, $id));
+
+            return false;
+        }
     }
 }
