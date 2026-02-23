@@ -57,67 +57,71 @@ class DeleteStaleDraftCarts extends Command
         $deletedTransactions = 0;
 
         foreach ($orderIds as $orderId) {
-            // Explicitly clear the cache for this order's dependencies
-            $cacheHandler->forgetEntryByConditions('transactions', ['order_id' => $orderId]);
-            $cacheHandler->forgetEntryByConditions('wire_transfers', ['order_id' => $orderId]);
-            $cacheHandler->forgetEntryByConditions('line_items', ['order_id' => $orderId]);
-
-            $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
-
-            $wireTransferIds = $this->fetchIds(
-                'wire_transfers',
-                $client,
-                static fn (Query $query) => $query->where('order_id', $orderId),
-            );
-
-            foreach ($wireTransferIds as $wireTransferId) {
-                try {
-                    $this->deleteResource($client, 'wire_transfers', $wireTransferId);
-                } catch (CommerceLayerException $exception) {
-                    if (! $this->isDependentTransactionsException($exception)) {
-                        throw $exception;
-                    }
-
-                    $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
-
-                    $this->deleteResource($client, 'wire_transfers', $wireTransferId);
-                }
-            }
-
-            $lineItemIds = $this->fetchIds(
-                'line_items',
-                $client,
-                static fn (Query $query) => $query->where('order_id', $orderId),
-            );
-
-            foreach ($lineItemIds as $lineItemId) {
-                try {
-                    if ($this->deleteResource($client, 'line_items', $lineItemId)) {
-                        $deletedLineItems++;
-                    }
-                } catch (CommerceLayerException $exception) {
-                    if (! $this->isDependentTransactionsException($exception)) {
-                        throw $exception;
-                    }
-
-                    $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
-
-                    if ($this->deleteResource($client, 'line_items', $lineItemId)) {
-                        $deletedLineItems++;
-                    }
-                }
-            }
-
             try {
-                $this->deleteResource($client, 'orders', $orderId);
-            } catch (CommerceLayerException $exception) {
-                if (! $this->isDependentTransactionsException($exception)) {
-                    throw $exception;
-                }
+                // Explicitly clear the cache for this order's dependencies
+                $cacheHandler->forgetEntryByConditions('transactions', ['order_id' => $orderId]);
+                $cacheHandler->forgetEntryByConditions('wire_transfers', ['order_id' => $orderId]);
+                $cacheHandler->forgetEntryByConditions('line_items', ['order_id' => $orderId]);
 
                 $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
 
-                $this->deleteResource($client, 'orders', $orderId);
+                $wireTransferIds = $this->fetchIds(
+                    'wire_transfers',
+                    $client,
+                    static fn (Query $query) => $query->where('order_id', $orderId),
+                );
+
+                foreach ($wireTransferIds as $wireTransferId) {
+                    try {
+                        $this->deleteResource($client, 'wire_transfers', $wireTransferId);
+                    } catch (CommerceLayerException $exception) {
+                        if (! $this->isDependentTransactionsException($exception)) {
+                            throw $exception;
+                        }
+
+                        $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
+
+                        $this->deleteResource($client, 'wire_transfers', $wireTransferId);
+                    }
+                }
+
+                $lineItemIds = $this->fetchIds(
+                    'line_items',
+                    $client,
+                    static fn (Query $query) => $query->where('order_id', $orderId),
+                );
+
+                foreach ($lineItemIds as $lineItemId) {
+                    try {
+                        if ($this->deleteResource($client, 'line_items', $lineItemId)) {
+                            $deletedLineItems++;
+                        }
+                    } catch (CommerceLayerException $exception) {
+                        if (! $this->isDependentTransactionsException($exception)) {
+                            throw $exception;
+                        }
+
+                        $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
+
+                        if ($this->deleteResource($client, 'line_items', $lineItemId)) {
+                            $deletedLineItems++;
+                        }
+                    }
+                }
+
+                try {
+                    $this->deleteResource($client, 'orders', $orderId);
+                } catch (CommerceLayerException $exception) {
+                    if (! $this->isDependentTransactionsException($exception)) {
+                        throw $exception;
+                    }
+
+                    $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
+
+                    $this->deleteResource($client, 'orders', $orderId);
+                }
+            } catch (CommerceLayerException $exception) {
+                $this->error(sprintf('Failed to delete order %s: %s', $orderId, $exception->getMessage()));
             }
         }
 
@@ -159,30 +163,19 @@ class DeleteStaleDraftCarts extends Command
 
     protected function deleteResource(CommerceLayer $client, string $resource, string $id): bool
     {
-        $attempts = 3;
-        $delay = 250; // Milliseconds
+        try {
+            $client->delete($resource, $id);
 
-        for ($i = 1; $i <= $attempts; $i++) {
-            try {
-                $client->delete($resource, $id);
+            return true;
+        } catch (CommerceLayerException $exception) {
+            if ($exception->getStatusCode() === 404) {
+                $this->warn(sprintf('Skipping %s %s because it no longer exists.', $resource, $id));
 
-                return true;
-            } catch (CommerceLayerException $exception) {
-                if ($exception->getStatusCode() === 404) {
-                    $this->warn(sprintf('Skipping %s %s because it no longer exists.', $resource, $id));
-
-                    return false;
-                }
-
-                if ($i === $attempts || ! $this->isDependentTransactionsException($exception)) {
-                    throw $exception;
-                }
-
-                usleep($delay * 1000 * $i);
+                return false;
             }
-        }
 
-        return false;
+            throw $exception;
+        }
     }
 
     protected function deleteTransactionsForOrder(CommerceLayer $client, string $orderId): int
