@@ -54,6 +54,8 @@ class DeleteDraftCart extends Command
             return self::SUCCESS;
         }
 
+        $deletedTransactions = $this->deleteTransactionsForOrder($client, $orderId);
+
         $wireTransferIds = $this->fetchIds(
             'wire_transfers',
             $client,
@@ -81,8 +83,6 @@ class DeleteDraftCart extends Command
                 $deletedLineItems++;
             }
         }
-
-        $deletedTransactions = $this->deleteTransactionsForOrder($client, $orderId);
 
         try {
             $this->deleteResource($client, 'orders', $orderId);
