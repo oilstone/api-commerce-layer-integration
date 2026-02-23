@@ -65,7 +65,17 @@ class DeleteStaleDraftCarts extends Command
             );
 
             foreach ($wireTransferIds as $wireTransferId) {
-                $this->deleteResource($client, 'wire_transfers', $wireTransferId);
+                try {
+                    $this->deleteResource($client, 'wire_transfers', $wireTransferId);
+                } catch (CommerceLayerException $exception) {
+                    if (! $this->isDependentTransactionsException($exception)) {
+                        throw $exception;
+                    }
+
+                    $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
+
+                    $this->deleteResource($client, 'wire_transfers', $wireTransferId);
+                }
             }
 
             $lineItemIds = $this->fetchIds(
@@ -75,8 +85,20 @@ class DeleteStaleDraftCarts extends Command
             );
 
             foreach ($lineItemIds as $lineItemId) {
-                if ($this->deleteResource($client, 'line_items', $lineItemId)) {
-                    $deletedLineItems++;
+                try {
+                    if ($this->deleteResource($client, 'line_items', $lineItemId)) {
+                        $deletedLineItems++;
+                    }
+                } catch (CommerceLayerException $exception) {
+                    if (! $this->isDependentTransactionsException($exception)) {
+                        throw $exception;
+                    }
+
+                    $deletedTransactions += $this->deleteTransactionsForOrder($client, $orderId);
+
+                    if ($this->deleteResource($client, 'line_items', $lineItemId)) {
+                        $deletedLineItems++;
+                    }
                 }
             }
 
