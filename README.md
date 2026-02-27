@@ -144,6 +144,7 @@ If you are building a Laravel application:
 - The service provider binds the query cache handler and client into the container, handling token retrieval and caching automatically.
 - Publish the configuration to adjust URLs, credentials, logging, and cache TTLs.
 - Use the `commerce-layer:cache:clear` command to flush cached query results or invalidate entries for specific records.
+- Console command behaviour is now exposed through framework-agnostic services (`Services\ClearCacheService`, `Services\DeleteDraftCartService`, `Services\DeleteStaleDraftCartsService`, and `Services\DeleteSkuService`) so you can trigger the same workflows directly without relying on Laravel console integration.
 
 ## Error handling
 All client requests raise a `CommerceLayerException` when the API responds with a non-2xx status. The exception surfaces the HTTP status code and any JSON:API error payloads for richer debugging.
