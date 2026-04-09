@@ -48,16 +48,7 @@ class ServiceProvider extends BaseServiceProvider
 
             $httpClient = new Client();
 
-            $tokenCacheKey = $config['token_cache_key'] ?? 'commerce-layer.access_token';
-            $tokenTtl = $config['token_cache_ttl'] ?? (55 * 60);
-
-            $token = Cache::remember($tokenCacheKey, $tokenTtl, function () use ($httpClient, $config, $authUrl) {
-                $formParams = [
-                    'grant_type' => 'client_credentials',
-                    'client_id' => $config['client_id'] ?? null,
-                    'client_secret' => $config['client_secret'] ?? null,
-                ];
-
+            $tokenResolver = function (bool $forceRefresh = false) use ($httpClient, $config, $authUrl) {
                 $scopeConfig = $config['scope'] ?? ($config['scopes'] ?? null);
 
                 if (is_array($scopeConfig)) {
@@ -68,29 +59,53 @@ class ServiceProvider extends BaseServiceProvider
                     $scopeConfig = '';
                 }
 
-                if ($scopeConfig !== '') {
-                    $formParams['scope'] = $scopeConfig;
+                $clientId = $config['client_id'] ?? '';
+                $tokenCacheKey = $config['token_cache_key'] ?? 'commerce-layer.access_token';
+                $tokenCacheKey .= '_' . md5($clientId . '|' . $scopeConfig);
+
+                if ($forceRefresh) {
+                    Cache::forget($tokenCacheKey);
                 }
 
-                if (! empty($config['audience'])) {
-                    $formParams['audience'] = $config['audience'];
+                $token = Cache::get($tokenCacheKey);
+
+                if (! $token) {
+                    $formParams = [
+                        'grant_type' => 'client_credentials',
+                        'client_id' => $clientId,
+                        'client_secret' => $config['client_secret'] ?? null,
+                    ];
+
+                    if ($scopeConfig !== '') {
+                        $formParams['scope'] = $scopeConfig;
+                    }
+
+                    if (! empty($config['audience'])) {
+                        $formParams['audience'] = $config['audience'];
+                    }
+
+                    $response = $httpClient->post($authUrl.'/oauth/token', [
+                        'form_params' => array_filter(
+                            $formParams,
+                            static fn ($value) => $value !== null && $value !== ''
+                        ),
+                    ]);
+
+                    $data = json_decode((string) $response->getBody(), true);
+
+                    if (! isset($data['access_token'])) {
+                        throw new RuntimeException('Unable to retrieve Commerce Layer access token.');
+                    }
+
+                    $token = $data['access_token'];
+                    $expiresIn = $data['expires_in'] ?? ($config['token_cache_ttl'] ?? 3300);
+                    $ttl = max(1, $expiresIn - 60);
+
+                    Cache::put($tokenCacheKey, $token, $ttl);
                 }
 
-                $response = $httpClient->post($authUrl.'/oauth/token', [
-                    'form_params' => array_filter(
-                        $formParams,
-                        static fn ($value) => $value !== null && $value !== ''
-                    ),
-                ]);
-
-                $data = json_decode((string) $response->getBody(), true);
-
-                if (! isset($data['access_token'])) {
-                    throw new RuntimeException('Unable to retrieve Commerce Layer access token.');
-                }
-
-                return $data['access_token'];
-            });
+                return $token;
+            };
 
             $logger = ! empty($config['debug'])
                 ? Log::channel($config['log_channel'] ?? config('logging.default', 'stack'))
@@ -101,7 +116,7 @@ class ServiceProvider extends BaseServiceProvider
             return new CommerceLayer(
                 $httpClient,
                 $apiUrl,
-                $token,
+                $tokenResolver,
                 $logger,
                 $handler,
             );

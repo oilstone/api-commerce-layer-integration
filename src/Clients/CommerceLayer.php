@@ -15,6 +15,13 @@ class CommerceLayer
 
     protected ?QueryCacheHandler $cacheHandler;
 
+    protected ?string $accessToken = null;
+
+    /**
+     * @var string|\Closure
+     */
+    protected $accessTokenResolver;
+
     protected array $defaultHeaders = [
         'Accept' => 'application/vnd.api+json',
         'Content-Type' => 'application/vnd.api+json',
@@ -23,14 +30,30 @@ class CommerceLayer
     public function __construct(
         Client $httpClient,
         protected string $baseUrl,
-        protected string $accessToken,
+        string|\Closure $accessTokenResolver,
         ?LoggerInterface $logger = null,
         ?QueryCacheHandler $cacheHandler = null
     ) {
         $this->httpClient = $httpClient;
         $this->baseUrl = rtrim($baseUrl, '/');
+        $this->accessTokenResolver = $accessTokenResolver;
         $this->logger = $logger;
         $this->cacheHandler = $cacheHandler;
+    }
+
+    protected function getAccessToken(): string
+    {
+        if ($this->accessToken !== null) {
+            return $this->accessToken;
+        }
+
+        if (is_callable($this->accessTokenResolver)) {
+            $this->accessToken = ($this->accessTokenResolver)();
+        } else {
+            $this->accessToken = $this->accessTokenResolver;
+        }
+
+        return $this->accessToken;
     }
 
     public function setCacheHandler(?QueryCacheHandler $handler): static
@@ -107,11 +130,17 @@ class CommerceLayer
     protected function request(string $method, string $uri, array $options = []): array
     {
         $options['headers'] = array_merge($this->defaultHeaders, $options['headers'] ?? [], [
-            'Authorization' => 'Bearer '.$this->accessToken,
+            'Authorization' => 'Bearer '.$this->getAccessToken(),
         ]);
         $options['http_errors'] = false;
 
         $response = $this->httpClient->request($method, $uri, $options);
+
+        if ($response->getStatusCode() === 401 && is_callable($this->accessTokenResolver)) {
+            $this->accessToken = ($this->accessTokenResolver)(true);
+            $options['headers']['Authorization'] = 'Bearer '.$this->accessToken;
+            $response = $this->httpClient->request($method, $uri, $options);
+        }
 
         $body = (string) $response->getBody();
         $decoded = json_decode($body, true);
