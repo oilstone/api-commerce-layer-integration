@@ -18,7 +18,10 @@ class CommerceLayer
     protected ?string $accessToken = null;
 
     /**
-     * @var string|\Closure
+     * A token, or a closure called with whether to force a refresh and the request's timeout
+     * options (timeout, connect_timeout), so it can bound its own token request.
+     *
+     * @var string|\Closure(bool, array): string
      */
     protected $accessTokenResolver;
 
@@ -41,14 +44,14 @@ class CommerceLayer
         $this->cacheHandler = $cacheHandler;
     }
 
-    protected function getAccessToken(): string
+    protected function getAccessToken(array $timeouts = []): string
     {
         if ($this->accessToken !== null) {
             return $this->accessToken;
         }
 
         if (is_callable($this->accessTokenResolver)) {
-            $this->accessToken = ($this->accessTokenResolver)();
+            $this->accessToken = ($this->accessTokenResolver)(false, $timeouts);
         } else {
             $this->accessToken = $this->accessTokenResolver;
         }
@@ -129,15 +132,17 @@ class CommerceLayer
 
     protected function request(string $method, string $uri, array $options = []): array
     {
+        $timeouts = array_intersect_key($options, array_flip(['timeout', 'connect_timeout']));
+
         $options['headers'] = array_merge($this->defaultHeaders, $options['headers'] ?? [], [
-            'Authorization' => 'Bearer '.$this->getAccessToken(),
+            'Authorization' => 'Bearer '.$this->getAccessToken($timeouts),
         ]);
         $options['http_errors'] = false;
 
         $response = $this->httpClient->request($method, $uri, $options);
 
         if ($response->getStatusCode() === 401 && is_callable($this->accessTokenResolver)) {
-            $this->accessToken = ($this->accessTokenResolver)(true);
+            $this->accessToken = ($this->accessTokenResolver)(true, $timeouts);
             $options['headers']['Authorization'] = 'Bearer '.$this->accessToken;
             $response = $this->httpClient->request($method, $uri, $options);
         }

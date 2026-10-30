@@ -95,6 +95,14 @@ The `Clients\CommerceLayer` class wraps a `GuzzleHttp\Client` instance and autom
 
 Each call accepts request-specific options (headers, query overrides, or logging flags) which are merged with sensible defaults.
 
+The access token can be a string or a closure. A closure is called with whether to force a refresh (`true` after a 401 response, which is then retried once) and the request's `timeout` and `connect_timeout` options, so it can bound its own token request:
+
+```php
+$client = new CommerceLayer($http, $apiUrl, function (bool $forceRefresh, array $timeouts) {
+    // Fetch or reuse a token, passing $timeouts to the OAuth request
+});
+```
+
 ### Query builder
 `Query` offers a fluent interface for constructing JSON:API compliant requests:
 
@@ -144,6 +152,7 @@ If you are building a Laravel application:
 
 - The service provider binds the query cache handler and client into the container, handling token retrieval and caching automatically.
 - Publish the configuration to adjust URLs, credentials, logging, and cache TTLs.
+- OAuth token requests use the calling request's `timeout` and `connect_timeout` when it sets them, and otherwise `auth_timeout` (`COMMERCE_LAYER_AUTH_TIMEOUT`, default 10 seconds) and `auth_connect_timeout` (`COMMERCE_LAYER_AUTH_CONNECT_TIMEOUT`, default 5 seconds).
 - Use the `commerce-layer:cache:clear` command to flush cached query results or invalidate entries for specific records.
 - Console command behaviour is now exposed through framework-agnostic services (`Services\ClearCacheService`, `Services\DeleteDraftCartService`, `Services\DeleteStaleDraftCartsService`, and `Services\DeleteSkuService`) so you can trigger the same workflows directly without relying on Laravel console integration.
 
@@ -159,10 +168,12 @@ The monitor lists a single record of a resource through the `CommerceLayer` clie
 | Option | Purpose |
 | --- | --- |
 | `resource` | The resource to list (default `markets`). The client's access token must be able to read it. |
-| `timeout` | Seconds for the whole request (default 5) |
-| `connect_timeout` | Seconds to establish a connection (default 3) |
+| `timeout` | Seconds for each request (default 5) |
+| `connect_timeout` | Seconds to establish each connection (default 3) |
 
 The usual system-status options, such as `name` and `thresholds`, apply too.
+
+Both timeouts are passed to the client's token resolver, so fetching or refreshing the access token is bounded as well. The limits apply to each request, and a check whose token is rejected makes up to three: the listing, the token refresh and the retry.
 
 When system-status is installed, the Laravel service provider registers the monitor as the `commerce_layer` type, built with the container's `CommerceLayer` client. Use it in the `monitors` section of `config/system-status.php`:
 

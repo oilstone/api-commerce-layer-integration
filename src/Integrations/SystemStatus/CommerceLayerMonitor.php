@@ -14,8 +14,11 @@ use Throwable;
  *
  * Options:
  * - resource: the resource to list (default "markets"); the client's token must be able to read it
- * - timeout: seconds for the whole request (default 5)
- * - connect_timeout: seconds to establish a connection (default 3)
+ * - timeout: seconds for each request (default 5)
+ * - connect_timeout: seconds to establish each connection (default 3)
+ *
+ * Both are passed to the client's token resolver too, so fetching or refreshing the access token
+ * is bounded by them. A check that refreshes its token makes up to three requests.
  */
 class CommerceLayerMonitor extends Monitor
 {
@@ -37,8 +40,8 @@ class CommerceLayerMonitor extends Monitor
         try {
             $response = $this->client->listResources($resource, ['page[size]' => 1], [
                 'use_cache' => false,
-                'timeout' => $this->config['timeout'] ?? 5,
-                'connect_timeout' => $this->config['connect_timeout'] ?? 3,
+                'timeout' => (float) ($this->config['timeout'] ?? 5),
+                'connect_timeout' => (float) ($this->config['connect_timeout'] ?? 3),
             ]);
         } catch (Throwable $e) {
             $this->fail(sprintf('Listing %s failed: %s', $resource, $this->redactUrls($e->getMessage())), $e);
