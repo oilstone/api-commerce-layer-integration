@@ -12,6 +12,8 @@ use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\ClearCache
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteDraftCart;
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteSku;
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteStaleDraftCarts;
+use Oilstone\ApiCommerceLayerIntegration\Integrations\SystemStatus\CommerceLayerMonitor;
+use Oilstone\SystemStatus\SystemStatus;
 use RuntimeException;
 
 class ServiceProvider extends BaseServiceProvider
@@ -48,7 +50,7 @@ class ServiceProvider extends BaseServiceProvider
 
             $httpClient = new Client();
 
-            $tokenResolver = function (bool $forceRefresh = false) use ($httpClient, $config, $authUrl) {
+            $tokenResolver = function (bool $forceRefresh = false, array $timeouts = []) use ($httpClient, $config, $authUrl) {
                 $scopeConfig = $config['scope'] ?? ($config['scopes'] ?? null);
 
                 if (is_array($scopeConfig)) {
@@ -89,6 +91,8 @@ class ServiceProvider extends BaseServiceProvider
                             $formParams,
                             static fn ($value) => $value !== null && $value !== ''
                         ),
+                        'timeout' => (float) ($timeouts['timeout'] ?? $config['auth_timeout'] ?? 10),
+                        'connect_timeout' => (float) ($timeouts['connect_timeout'] ?? $config['auth_connect_timeout'] ?? 5),
                     ]);
 
                     $data = json_decode((string) $response->getBody(), true);
@@ -121,6 +125,12 @@ class ServiceProvider extends BaseServiceProvider
                 $handler,
             );
         });
+
+        if (class_exists(SystemStatus::class)) {
+            $this->callAfterResolving(SystemStatus::class, function (SystemStatus $status) {
+                $status->extend('commerce_layer', CommerceLayerMonitor::class);
+            });
+        }
     }
 
     public function boot(): void

@@ -12,7 +12,11 @@
     },
     "require-dev": {
         "laravel/framework": "^13.17",
-        "oilstone/api-resource-loader": "^5.3"
+        "oilstone/api-resource-loader": "^5.3",
+        "oilstone/system-status": "^2.0.0-beta.3"
+    },
+    "suggest": {
+        "oilstone/system-status": "Enables the Commerce Layer health check monitor"
     },
     "license": "MIT",
     "autoload": {

@@ -3,6 +3,8 @@
 return [
     'api_url' => env('COMMERCE_LAYER_API_URL'),
     'auth_url' => env('COMMERCE_LAYER_AUTH_URL', 'https://auth.commercelayer.io'),
+    'auth_timeout' => env('COMMERCE_LAYER_AUTH_TIMEOUT', 10),
+    'auth_connect_timeout' => env('COMMERCE_LAYER_AUTH_CONNECT_TIMEOUT', 5),
     'client_id' => env('COMMERCE_LAYER_CLIENT_ID'),
     'client_secret' => env('COMMERCE_LAYER_CLIENT_SECRET'),
     'audience' => env('COMMERCE_LAYER_AUDIENCE'),
