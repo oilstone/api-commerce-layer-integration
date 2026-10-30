@@ -12,6 +12,8 @@ use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\ClearCache
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteDraftCart;
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteSku;
 use Oilstone\ApiCommerceLayerIntegration\Integrations\Laravel\Console\DeleteStaleDraftCarts;
+use Oilstone\ApiCommerceLayerIntegration\Integrations\SystemStatus\CommerceLayerMonitor;
+use Oilstone\SystemStatus\SystemStatus;
 use RuntimeException;
 
 class ServiceProvider extends BaseServiceProvider
@@ -121,6 +123,12 @@ class ServiceProvider extends BaseServiceProvider
                 $handler,
             );
         });
+
+        if (class_exists(SystemStatus::class)) {
+            $this->callAfterResolving(SystemStatus::class, function (SystemStatus $status) {
+                $status->extend('commerce_layer', CommerceLayerMonitor::class);
+            });
+        }
     }
 
     public function boot(): void

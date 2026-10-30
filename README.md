@@ -16,6 +16,7 @@ A PHP library that streamlines communication between the [Commerce Layer](https:
   - [Schema meta properties](#schema-meta-properties)
   - [Caching](#caching)
   - [Laravel integration](#laravel-integration)
+  - [System status monitor](#system-status-monitor)
 - [Error handling](#error-handling)
 - [Testing](#testing)
 - [Contributing](#contributing)
@@ -145,6 +146,58 @@ If you are building a Laravel application:
 - Publish the configuration to adjust URLs, credentials, logging, and cache TTLs.
 - Use the `commerce-layer:cache:clear` command to flush cached query results or invalidate entries for specific records.
 - Console command behaviour is now exposed through framework-agnostic services (`Services\ClearCacheService`, `Services\DeleteDraftCartService`, `Services\DeleteStaleDraftCartsService`, and `Services\DeleteSkuService`) so you can trigger the same workflows directly without relying on Laravel console integration.
+
+### System status monitor
+`Integrations\SystemStatus\CommerceLayerMonitor` is a health check for [`oilstone/system-status`](https://github.com/oilstone/system-status), which is optional:
+
+```bash
+composer require oilstone/system-status:^2.0.0-beta.3
+```
+
+The monitor lists a single record of a resource through the `CommerceLayer` client. It uses the client's cached access token but bypasses the query cache, so every check reaches the API. It is named "Commerce Layer" and rated optimal under 1 second, acceptable under 3 seconds and degraded beyond that. It reports the resource's record count as metadata, keyed by the resource name.
+
+| Option | Purpose |
+| --- | --- |
+| `resource` | The resource to list (default `markets`). The client's access token must be able to read it. |
+| `timeout` | Seconds for the whole request (default 5) |
+| `connect_timeout` | Seconds to establish a connection (default 3) |
+
+The usual system-status options, such as `name` and `thresholds`, apply too.
+
+When system-status is installed, the Laravel service provider registers the monitor as the `commerce_layer` type, built with the container's `CommerceLayer` client. Use it in the `monitors` section of `config/system-status.php`:
+
+```php
+'monitors' => [
+    'services' => [
+        ['type' => 'commerce_layer', 'resource' => 'skus', 'timeout' => 3],
+    ],
+],
+```
+
+Or as a watch's `monitor`:
+
+```php
+'watches' => [
+    'definitions' => [
+        'commerce-layer' => [
+            'monitor' => ['type' => 'commerce_layer'],
+            'failures' => 3,
+            'handler' => App\Watches\CommerceLayerDown::class,
+        ],
+    ],
+],
+```
+
+Without Laravel, register the type with a closure that passes your client:
+
+```php
+use Oilstone\ApiCommerceLayerIntegration\Integrations\SystemStatus\CommerceLayerMonitor;
+use Oilstone\SystemStatus\SystemStatus;
+
+$status = (new SystemStatus())
+    ->extend('commerce_layer', fn (array $config) => new CommerceLayerMonitor($config, $client))
+    ->add(['type' => 'commerce_layer', 'resource' => 'markets'], 'services');
+```
 
 ## Error handling
 All client requests raise a `CommerceLayerException` when the API responds with a non-2xx status. The exception surfaces the HTTP status code and any JSON:API error payloads for richer debugging.
